@@ -1,9 +1,8 @@
 'use client';
 
-import { TimeRange } from '@/lib/types';
+import { TimeRange, Metric, PredefinedTimeRange } from '@/lib/types';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-type Metric = 'clicks' | 'impressions' | 'ctr' | 'position';
 type MetricBlock = {
   id: string;
   type: 'metric';

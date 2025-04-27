@@ -7,14 +7,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportBlock, useReportConfig } from '@/contexts/report-config-context';
 import { DraggableBlock } from './DraggableBlock';
 import { formatTimeRange } from '@/lib/utils/date';
-import { TimeRange, PredefinedTimeRange } from '@/lib/types';
-
-type MetricType = 'clicks' | 'impressions' | 'ctr' | 'position';
+import { TimeRange, PredefinedTimeRange, Metric } from '@/lib/types';
 
 interface AvailableBlock {
   id: string;
   name: string;
-  metric?: MetricType;
+  metric?: Metric;
   timeRange?: PredefinedTimeRange;
   type?: 'intent';
 }

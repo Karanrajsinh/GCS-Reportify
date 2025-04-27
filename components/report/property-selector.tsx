@@ -7,14 +7,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useParams, useRouter } from 'next/navigation';
 
 export default function PropertySelector() {
   const { selectedProperty, setSelectedProperty } = useReportConfig();
-  
+  const router = useRouter();
+  const params = useParams();
+  const website = params.website as string;
+
   const { data: properties, isLoading, error } = useQuery({
     queryKey: ['gscProperties'],
     queryFn: fetchGscProperties,
   });
+
+  // If we're on a website-specific page, we don't need to show the property selector
+  if (website) {
+    return null;
+  }
 
   if (error) {
     return (

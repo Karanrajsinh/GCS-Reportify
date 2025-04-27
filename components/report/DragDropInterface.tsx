@@ -115,7 +115,6 @@ export function DragDropInterface() {
                         <tr>
                             {columns.map((column, index) => (
                                 <ColumnHeader
-
                                     key={index}
                                     column={column}
                                     index={index}
@@ -134,6 +133,13 @@ export function DragDropInterface() {
                             </th>
                         </tr>
                     </thead>
+                    <tbody>
+                        <tr>
+                            <td colSpan={columns.length + 1} className="p-4 text-center text-muted-foreground">
+                                Add metrics to your report by dragging them from the available metrics section.
+                            </td>
+                        </tr>
+                    </tbody>
                 </table>
             </div>
         </div>
