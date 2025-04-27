@@ -1,37 +1,205 @@
 'use client';
 
-import { useState } from 'react';
-import { PlusCircle, Trash2, MoveHorizontal, Download } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download } from 'lucide-react';
 import {
   DndContext,
+  DragEndEvent,
+  useSensor,
+  useSensors,
+  PointerSensor,
   DragOverlay,
+  useDroppable,
 } from '@dnd-kit/core';
-import { useDndSensors } from '@/hooks/use-dnd-sensors';
+import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useReportConfig } from '@/contexts/report-config-context';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useReportConfig, type ReportBlock } from '@/contexts/report-config-context';
 import { ReportTable } from '@/components/report/report-table';
-import { MetricSelector } from '@/components/report/metric-selector';
+import { MetricSelector } from './metric-selector';
 import { exportToCsv } from '@/lib/api/export';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { ReportBlock } from '@/contexts/report-config-context';
-import { TimeRange } from '@/lib/types';
+import { TimeRange, PredefinedTimeRange, ReportData } from '@/lib/types';
+import { DragDropInterface } from './DragDropInterface';
+import { DraggableBlock } from './DraggableBlock';
+import { fetchGscData } from '@/lib/api/gsc';
+
+type MetricType = 'clicks' | 'impressions' | 'ctr' | 'position';
+
+type AvailableBlock = ReportBlock;
+
 export default function ReportBuilder() {
-  const { selectedProperty, reportBlocks, addReportBlock } = useReportConfig();
-  const [showMetricSelector, setShowMetricSelector] = useState(false);
+  const { selectedProperty, reportBlocks, addReportBlock, removeReportBlock } = useReportConfig();
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('last7days');
-  const sensors = useDndSensors();
+  const [usedMetrics, setUsedMetrics] = useState<Set<string>>(new Set());
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const handleMetricDrop = (metric: string) => {
-    const newBlock: ReportBlock = {
-      id: `123456`,
+  // Fetch GSC data when property is selected
+  useEffect(() => {
+    async function fetchData() {
+      if (!selectedProperty) return;
+
+      try {
+        console.log('Fetching GSC data for property:', selectedProperty);
+        const data = await fetchGscData(selectedProperty, selectedTimeRange);
+        console.log('Received GSC data:', {
+          property: selectedProperty,
+          timeRange: selectedTimeRange,
+          rowCount: data.length,
+          sampleData: data.slice(0, 3) // Log first 3 rows as sample
+        });
+      } catch (error) {
+        console.error('Error fetching GSC data:', error);
+        toast({
+          title: "Error fetching data",
+          description: "Failed to fetch data from Google Search Console. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
+
+    fetchData();
+  }, [selectedProperty, selectedTimeRange]);
+
+  // Update usedMetrics when reportBlocks change
+  useEffect(() => {
+    const newUsedMetrics = new Set<string>();
+    reportBlocks.forEach((block: ReportBlock) => {
+      if (block.type === 'metric') {
+        newUsedMetrics.add(block.id);
+      }
+    });
+    setUsedMetrics(newUsedMetrics);
+  }, [reportBlocks]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const availableBlocks: AvailableBlock[] = [
+    // Last 7 days blocks
+    {
+      id: 'clicks_l7d',
       type: 'metric',
-      metric: metric as any,
-      timeRange: selectedTimeRange,
-    };
+      metric: 'clicks',
+      timeRange: 'last7days'
+    },
+    {
+      id: 'impressions_l7d',
+      type: 'metric',
+      metric: 'impressions',
+      timeRange: 'last7days'
+    },
+    {
+      id: 'ctr_l7d',
+      type: 'metric',
+      metric: 'ctr',
+      timeRange: 'last7days'
+    },
+    {
+      id: 'position_l7d',
+      type: 'metric',
+      metric: 'position',
+      timeRange: 'last7days'
+    },
+    // Last 28 days blocks
+    {
+      id: 'clicks_l28d',
+      type: 'metric',
+      metric: 'clicks',
+      timeRange: 'last28days'
+    },
+    {
+      id: 'impressions_l28d',
+      type: 'metric',
+      metric: 'impressions',
+      timeRange: 'last28days'
+    },
+    {
+      id: 'ctr_l28d',
+      type: 'metric',
+      metric: 'ctr',
+      timeRange: 'last28days'
+    },
+    {
+      id: 'position_l28d',
+      type: 'metric',
+      metric: 'position',
+      timeRange: 'last28days'
+    },
+    // Last 3 months blocks
+    {
+      id: 'clicks_l3m',
+      type: 'metric',
+      metric: 'clicks',
+      timeRange: 'last3months'
+    },
+    {
+      id: 'impressions_l3m',
+      type: 'metric',
+      metric: 'impressions',
+      timeRange: 'last3months'
+    },
+    {
+      id: 'ctr_l3m',
+      type: 'metric',
+      metric: 'ctr',
+      timeRange: 'last3months'
+    },
+    {
+      id: 'position_l3m',
+      type: 'metric',
+      metric: 'position',
+      timeRange: 'last3months'
+    },
+    // Intent block
+    {
+      id: 'intent',
+      type: 'intent'
+    }
+  ];
 
-    addReportBlock(newBlock);
+  const handleDragStart = (event: any) => {
+    setActiveId(event.active.id);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    if (active.id !== over.id) {
+      const activeBlock = availableBlocks.find(block => block.id === active.id);
+      if (!activeBlock) return;
+
+      // Check if we're dropping on a specific column
+      if (typeof over.id === 'string' && over.id.startsWith('column-')) {
+        const columnIndex = parseInt(over.id.split('-')[1], 10);
+
+        // Create a new block with a unique ID to avoid conflicts
+        const newBlock = {
+          ...activeBlock,
+          id: `${activeBlock.id}_${Date.now()}`
+        };
+
+        // Add the new block at the specific position
+        addReportBlock(newBlock, columnIndex);
+        return;
+      }
+
+      // For drops not on specific columns, just add the block
+      addReportBlock(activeBlock);
+    }
+  };
+
+  const handleRemoveMetric = (metricId: string) => {
+    removeReportBlock(metricId);
   };
 
   const handleExport = () => {
@@ -53,78 +221,101 @@ export default function ReportBuilder() {
       },
       {
         query: "example query 2",
-        metrics: { "clicks-last7days": 85, "impressions-last28days": 950 },
-        intent: { category: "Transactional", description: "Intending to purchase..." }
+        metrics: { "clicks-last7days": 85, "impressions-last28days": 1200 },
+        intent: { category: "Transactional", description: "Looking to purchase..." }
       }
     ];
 
-    exportToCsv(mockData, `gsc-report-${new Date().toISOString().slice(0, 10)}.csv`);
-
-    toast({
-      title: "Report exported",
-      description: "Your report has been exported to CSV successfully.",
-    });
+    exportToCsv(mockData, "gsc-report.csv");
   };
 
   if (!selectedProperty) {
     return (
       <Alert>
-        <AlertTitle>Select a property</AlertTitle>
+        <AlertTitle>No property selected</AlertTitle>
         <AlertDescription>
-          Please select a Google Search Console property before building your report.
+          Please select a property from the sidebar to start building your report.
         </AlertDescription>
       </Alert>
     );
   }
 
   return (
-    <DndContext sensors={sensors}>
-      <Card>
-        <CardHeader>
-          <CardTitle>Report Builder</CardTitle>
-          <CardDescription>
-            Drag and drop metrics to create your custom report
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowMetricSelector(true)}
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add Metric
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      modifiers={[restrictToWindowEdges]}
+    >
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Report Builder</h2>
+            <p className="text-muted-foreground">
+              Build your report by adding metrics and analyzing search intent.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" />
+              Export
             </Button>
-
-            {reportBlocks.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExport}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export to CSV
-              </Button>
-            )}
           </div>
+        </div>
 
-          {showMetricSelector && (
-            <MetricSelector onClose={() => setShowMetricSelector(false)} />
-          )}
-
-          <div className="min-h-60 mt-4">
-            {reportBlocks.length > 0 ? (
-              <ReportTable onMetricDrop={handleMetricDrop} />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-60 border border-dashed rounded-md">
-                <MoveHorizontal className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">Add metrics to your report</p>
-              </div>
-            )}
+        <div className="space-y-8">
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Available Metrics</h3>
+            <MetricSelector
+              usedMetrics={usedMetrics}
+              onRemoveMetric={handleRemoveMetric}
+            />
           </div>
-        </CardContent>
-      </Card>
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Report Columns</h3>
+            <DragDropInterface />
+          </div>
+        </div>
+
+        {reportBlocks.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Report Preview</CardTitle>
+              <CardDescription>
+                This is a preview of how your report will look. The actual data will be fetched when you export.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ReportTable onMetricDrop={() => { }} />
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <DragOverlay>
+        {activeId ? (
+          <DraggableBlock
+            id={activeId}
+            name={(() => {
+              const block = availableBlocks.find(block => block.id === activeId);
+              if (!block) return 'Unknown Block';
+
+              if (block.type === 'metric') {
+                const timeRangeMap: Record<PredefinedTimeRange, string> = {
+                  'last7days': '7d',
+                  'last28days': '28d',
+                  'last3months': '3m'
+                };
+                const timeRangeStr = typeof block.timeRange === 'string'
+                  ? timeRangeMap[block.timeRange] || block.timeRange
+                  : `${block.timeRange.startDate} to ${block.timeRange.endDate}`;
+                return `${block.metric} (${timeRangeStr})`;
+              }
+              return 'Intent Analysis';
+            })()}
+          />
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }

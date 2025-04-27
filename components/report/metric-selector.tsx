@@ -1,130 +1,88 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ReportBlock, useReportConfig } from '@/contexts/report-config-context';
-import { TimeRange } from '@/lib/types';
+import { DraggableBlock } from './DraggableBlock';
+import { formatTimeRange } from '@/lib/utils/date';
+import { TimeRange, PredefinedTimeRange } from '@/lib/types';
 
-interface MetricSelectorProps {
-  onClose: () => void;
+type MetricType = 'clicks' | 'impressions' | 'ctr' | 'position';
+
+interface AvailableBlock {
+  id: string;
+  name: string;
+  metric?: MetricType;
+  timeRange?: PredefinedTimeRange;
+  type?: 'intent';
 }
 
-export function MetricSelector({ onClose }: MetricSelectorProps) {
-  const { addReportBlock } = useReportConfig();
-  const [selectedMetric, setSelectedMetric] = useState<string>('clicks');
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('last7days');
+// Define available metric blocks
+const availableBlocks: AvailableBlock[] = [
+  { id: 'clicks_l7d', name: 'Clicks', metric: 'clicks', timeRange: 'last7days' },
+  { id: 'clicks_l28d', name: 'Clicks', metric: 'clicks', timeRange: 'last28days' },
+  { id: 'clicks_l3m', name: 'Clicks', metric: 'clicks', timeRange: 'last3months' },
+  { id: 'impressions_l7d', name: 'Impressions', metric: 'impressions', timeRange: 'last7days' },
+  { id: 'impressions_l28d', name: 'Impressions', metric: 'impressions', timeRange: 'last28days' },
+  { id: 'impressions_l3m', name: 'Impressions', metric: 'impressions', timeRange: 'last3months' },
+  { id: 'ctr_l7d', name: 'CTR', metric: 'ctr', timeRange: 'last7days' },
+  { id: 'ctr_l28d', name: 'CTR', metric: 'ctr', timeRange: 'last28days' },
+  { id: 'ctr_l3m', name: 'CTR', metric: 'ctr', timeRange: 'last3months' },
+  { id: 'position_l7d', name: 'Position', metric: 'position', timeRange: 'last7days' },
+  { id: 'position_l28d', name: 'Position', metric: 'position', timeRange: 'last28days' },
+  { id: 'position_l3m', name: 'Position', metric: 'position', timeRange: 'last3months' },
+  { id: 'intent', name: 'Intent Analysis', type: 'intent' },
+];
 
-  const handleAddMetric = () => {
-    const newBlock: ReportBlock = {
-      id: '2',
-      type: 'metric',
-      metric: selectedMetric as any,
-      timeRange: selectedTimeRange,
-    };
+interface MetricSelectorProps {
+  usedMetrics: Set<string>;
+  onRemoveMetric: (metricId: string) => void;
+}
 
-    addReportBlock(newBlock);
-    onClose();
-  };
+export function MetricSelector({ usedMetrics, onRemoveMetric }: MetricSelectorProps) {
+  const { reportBlocks } = useReportConfig();
 
-  const handleAddIntent = () => {
-    const newBlock: ReportBlock = {
-      id: '2',
-      type: 'intent',
-    };
-
-    addReportBlock(newBlock);
-    onClose();
+  // Check if a block is used in the table
+  const isBlockUsed = (blockId: string) => {
+    return reportBlocks.some(block => block.id === blockId);
   };
 
   return (
-    <Card className="border-2 border-primary/20">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Add to Report</CardTitle>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="metrics">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="metrics">Metrics</TabsTrigger>
-            <TabsTrigger value="intent">Intent Analysis</TabsTrigger>
-          </TabsList>
+    <div>
+      <Tabs defaultValue="metrics">
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsTrigger value="metrics">Metrics</TabsTrigger>
+          <TabsTrigger value="intent">Intent Analysis</TabsTrigger>
+        </TabsList>
 
-          <TabsContent value="metrics" className="space-y-4">
-            <div>
-              <Label htmlFor="metric">Select Metric</Label>
-              <RadioGroup
-                id="metric"
-                value={selectedMetric}
-                onValueChange={setSelectedMetric}
-                className="grid grid-cols-2 gap-2 mt-2"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="clicks" id="metric-clicks" />
-                  <Label htmlFor="metric-clicks">Clicks</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="impressions" id="metric-impressions" />
-                  <Label htmlFor="metric-impressions">Impressions</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="ctr" id="metric-ctr" />
-                  <Label htmlFor="metric-ctr">CTR</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="position" id="metric-position" />
-                  <Label htmlFor="metric-position">Position</Label>
-                </div>
-              </RadioGroup>
-            </div>
+        <TabsContent value="metrics" className="space-y-4">
+          <div className="flex w-full overflow-x-auto gap-2">
+            {availableBlocks.filter(block => !block.type).map((block) => (
+              <DraggableBlock
+                key={block.id}
+                id={block.id}
+                name={`${block.name} (${formatTimeRange(block.timeRange!)})`}
+                disabled={isBlockUsed(block.id)}
+              />
+            ))}
+          </div>
+        </TabsContent>
 
-            <div>
-              <Label htmlFor="timerange">Time Range</Label>
-              <RadioGroup
-                id="timerange"
-                value={selectedTimeRange as string}
-                onValueChange={(value) => setSelectedTimeRange(value as TimeRange)}
-                className="grid grid-cols-1 gap-2 mt-2"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="last7days" id="timerange-7days" />
-                  <Label htmlFor="timerange-7days">Last 7 Days</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="last28days" id="timerange-28days" />
-                  <Label htmlFor="timerange-28days">Last 28 Days</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="last3months" id="timerange-3months" />
-                  <Label htmlFor="timerange-3months">Last 3 Months</Label>
-                </div>
-              </RadioGroup>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="intent">
-            <div className="p-4 bg-muted/50 rounded-md">
-              <p className="text-sm">
-                Add AI-powered intent analysis to your report. This will analyze each search query to determine user intent and categorize it appropriately.
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-      <CardFooter className="justify-end space-x-2">
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        {selectedMetric && selectedTimeRange ? (
-          <Button onClick={handleAddMetric}>Add Metric</Button>
-        ) : (
-          <Button onClick={handleAddIntent}>Add Intent Analysis</Button>
-        )}
-      </CardFooter>
-    </Card>
+        <TabsContent value="intent">
+          <div className="p-4 bg-muted/50 rounded-md">
+            <p className="text-sm mb-4">
+              Add AI-powered intent analysis to your report. This will analyze each search query to determine user intent and categorize it appropriately.
+            </p>
+            <DraggableBlock
+              id="intent"
+              name="Intent Analysis"
+              disabled={isBlockUsed('intent')}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }

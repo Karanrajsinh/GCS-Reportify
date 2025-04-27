@@ -22,7 +22,7 @@ interface ReportConfigContextType {
   selectedProperty: string | null;
   reportBlocks: ReportBlock[];
   setSelectedProperty: (property: string | null) => void;
-  addReportBlock: (block: ReportBlock) => void;
+  addReportBlock: (block: ReportBlock, position?: number) => void;
   removeReportBlock: (blockId: string) => void;
   reorderReportBlocks: (startIndex: number, endIndex: number) => void;
 }
@@ -33,8 +33,17 @@ export function ReportConfigProvider({ children }: { children: React.ReactNode }
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
   const [reportBlocks, setReportBlocks] = useState<ReportBlock[]>([]);
 
-  const addReportBlock = useCallback((block: ReportBlock) => {
-    setReportBlocks((prev) => [...prev, block]);
+  const addReportBlock = useCallback((block: ReportBlock, position?: number) => {
+    setReportBlocks((prev) => {
+      // If position is provided, insert at that position
+      if (position !== undefined) {
+        const newBlocks = [...prev];
+        newBlocks[position] = block;
+        return newBlocks;
+      }
+      // Otherwise, append to the end
+      return [...prev, block];
+    });
   }, []);
 
   const removeReportBlock = useCallback((blockId: string) => {

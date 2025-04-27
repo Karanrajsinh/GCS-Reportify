@@ -43,6 +43,22 @@ export interface GeminiIntentResponse {
 }
 
 // Report types
+export type Metric = 'clicks' | 'impressions' | 'ctr' | 'position';
+
+export type MetricBlock = {
+  id: string;
+  type: 'metric';
+  metric: Metric;
+  timeRange: TimeRange;
+};
+
+export type IntentBlock = {
+  id: string;
+  type: 'intent';
+};
+
+export type ReportBlock = MetricBlock | IntentBlock;
+
 export interface ReportData {
   query: string;
   metrics: Record<string, number>;
