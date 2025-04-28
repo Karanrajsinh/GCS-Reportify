@@ -830,8 +830,8 @@ export function ReportTable() {
               <TableBody>
                 {currentPageData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={columns.length + 2} className="h-24 text-center">
-                      <div className="flex flex-col items-center justify-center text-muted-foreground">
+                    <TableCell colSpan={columns.length + 3} className="h-[calc(80vh-18rem)] text-center">
+                      <div className="flex flex-col items-center mx-auto justify-center text-muted-foreground">
                         <p>No data available</p>
                         <p className="text-sm">Click &quot;Fetch Data&quot; to load your report</p>
                       </div>
