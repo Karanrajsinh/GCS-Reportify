@@ -94,7 +94,7 @@ export default function ReportPage() {
                             <CardHeader>
                                 <CardTitle>Report Not Found</CardTitle>
                                 <CardDescription>
-                                    The report you're looking for doesn't exist or you don't have permission to view it.
+                                    The report you&apos;re looking for doesn&apos;t exist or you don&apos;t have permission to view it.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -142,4 +142,4 @@ export default function ReportPage() {
             </div>
         </div>
     );
-} 
+}

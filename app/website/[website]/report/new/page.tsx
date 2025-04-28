@@ -1,7 +1,6 @@
 'use client';
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { useAuth } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { useParams, useRouter } from "next/navigation";
 import ReportBuilder from "@/components/report/report-builder";
 import { useReportConfig } from "@/contexts/report-config-context";
 import { useEffect } from "react";
+import { MetricsSidebar } from "@/components/report/metrics-sidebar";
 
 export default function NewReportPage() {
     const { userId } = useAuth();
@@ -30,12 +30,18 @@ export default function NewReportPage() {
     }, [decodedWebsite, setSelectedProperty]);
 
     return (
-        <div className="flex min-h-screen flex-col">
+        <div className="flex h-screen flex-col">
             <DashboardHeader />
-            <div className="container mx-auto flex-1 py-6 md:py-10 px-4 md:px-6 max-w-7xl">
-                <DashboardShell>
+            <div className="flex">
+                {/* Sidebar */}
+                <div className="w-80 max-h-[calc(100vh-4.5rem)]">
+                    <MetricsSidebar />
+                </div>
+
+                {/* Main Content */}
+                <div className="flex-1 p-6 md:p-10">
                     <div className="space-y-6">
-                        <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-2">
                             <Button
                                 variant="ghost"
                                 size="sm"
@@ -47,19 +53,12 @@ export default function NewReportPage() {
                             </Button>
                         </div>
 
-                        <div>
-                            <h1 className="text-3xl font-bold tracking-tight">Create New Report</h1>
-                            <p className="text-muted-foreground mt-2">
-                                Configure your custom Google Search Console report for {decodedWebsite}
-                            </p>
-                        </div>
-
-                        <div className="mt-8 space-y-6">
+                        <div className="mt-8">
                             <ReportBuilder />
                         </div>
                     </div>
-                </DashboardShell>
+                </div>
             </div>
         </div>
     );
-} 
+}

@@ -1,87 +1,109 @@
 import { NextResponse } from 'next/server';
-import axios from 'axios';
+import { AIChatSession } from '../AI-Modal';
+
+interface IntentData {
+  query: string;
+  intent: string;
+  category: string;
+}
 
 export async function POST(request: Request) {
   try {
-    const { query } = await request.json();
+    console.log('[Intent Route] Received request');
+    const { queries } = await request.json();
+    console.log('[Intent Route] Queries to analyze:', queries);
     
-    if (!query) {
+    if (!queries || !Array.isArray(queries) || queries.length === 0) {
+      console.error('[Intent Route] Invalid queries array');
       return NextResponse.json(
-        { error: 'Query is required' },
+        { error: 'Queries array is required' },
         { status: 400 }
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    
-    if (!apiKey) {
-      console.error('Missing Gemini API key');
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
-
-    // Construct the prompt for Gemini
+    // Construct the prompt for all queries at once
     const prompt = `
-      Analyze the search intent for the following search query:
-      "${query}"
+      You are a search intent analyzer. Analyze these search queries and provide the user's intent and category for each.
       
-      Provide your response in JSON format with the following fields:
-      1. intent: A concise description of what the user is trying to find or do
-      2. category: One of the following categories:
-         - Informational
-         - Navigational
-         - Transactional
-         - Commercial Investigation
+      Search Queries:
+      ${queries.map((q, i) => `${i + 1}. "${q}"`).join('\n')}
+      
+      For each query, respond with a JSON array of objects containing:
+      1. query: The original search query
+      2. intent: A clear, concise description of what the user is trying to find or accomplish
+      3. category: Exactly one of these categories:
+         - Informational (seeking information or answers)
+         - Navigational (looking for a specific website or page)
+         - Transactional (intending to complete an action or purchase)
+         - Commercial Investigation (researching products or services before purchase)
+      
+      Focus on accuracy and brevity in intent descriptions.
+      Respond with ONLY the JSON array, no other text.
     `;
 
-    // Make request to Gemini API
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${apiKey}`,
-      {
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 200,
+    try {
+      // Get AI response for all queries at once
+      const result = await AIChatSession.sendMessage(prompt);
+      const textContent = result.response.text();
+      console.log('[Intent Route] Raw AI response:', textContent);
+      
+      // Try parsing the response in different ways
+      let parsedData: IntentData | IntentData[] | null = null;
+      try {
+        // First try parsing the raw response
+        parsedData = JSON.parse(textContent.trim());
+      } catch (e) {
+        console.log('[Intent Route] Failed to parse raw response, trying to extract JSON');
+        // Try to find JSON-like content in the response
+        const jsonMatch = textContent.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsedData = JSON.parse(jsonMatch[0].trim());
+          } catch (e2) {
+            console.error('[Intent Route] Failed to parse extracted JSON:', e2);
+            // Don't throw, we'll handle this in the next section
+          }
         }
       }
-    );
 
-    // Extract JSON from the response
-    const content = response.data.candidates?.[0]?.content;
-    if (!content) {
-      throw new Error('No response from Gemini API');
-    }
+      // Ensure we have an array and map results
+      const finalResults = queries.map((query, index) => {
+        let intentData = { intent: 'Unable to determine intent', category: 'Unknown' };
+        
+        if (parsedData) {
+          if (Array.isArray(parsedData) && parsedData[index]) {
+            // If we have an array result, use the matching index
+            intentData = {
+              intent: parsedData[index].intent || 'Unable to determine intent',
+              category: parsedData[index].category || 'Unknown'
+            };
+          } else if (!Array.isArray(parsedData) && index === 0) {
+            // If we have a single object result, use it for the first query
+            intentData = {
+              intent: (parsedData as IntentData).intent || 'Unable to determine intent',
+              category: (parsedData as IntentData).category || 'Unknown'
+            };
+          }
+        }
 
-    const textContent = content.parts?.[0]?.text;
-    
-    // Extract JSON from the text response
-    let jsonMatch = textContent.match(/\{[\s\S]*\}/);
-    let result;
-    
-    if (jsonMatch) {
-      try {
-        result = JSON.parse(jsonMatch[0]);
-      } catch (e) {
-        console.error('Failed to parse JSON from Gemini response');
-        result = {
-          intent: 'Unable to determine intent',
-          category: 'Unknown'
+        return {
+          query,
+          ...intentData
         };
-      }
-    } else {
-      result = {
+      });
+
+      console.log('[Intent Route] Final response:', finalResults);
+      return NextResponse.json(finalResults);
+    } catch (error) {
+      console.error('[Intent Route] Error in AI processing:', error);
+      // Return basic intent analysis for all queries
+      const fallbackResults = queries.map(query => ({
+        query,
         intent: 'Unable to determine intent',
         category: 'Unknown'
-      };
+      }));
+      return NextResponse.json(fallbackResults);
     }
-
-    return NextResponse.json({
-      query,
-      intent: result.intent,
-      category: result.category
-    });
   } catch (error: any) {
     console.error('Error analyzing query intent:', error);
     return NextResponse.json(

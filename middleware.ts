@@ -1,8 +1,11 @@
 import { authMiddleware } from "@clerk/nextjs";
  
 export default authMiddleware({
-  // Add publicRoutes to allow access to public pages without authentication
-  publicRoutes: ["/", "/api/webhook"]
+  publicRoutes: ["/"],
+  ignoredRoutes: [
+    "/((?!api|trpc))(_next.*|.+.[w]+$)", 
+    "/api/gemini/intent"
+  ],
 });
  
 export const config = {

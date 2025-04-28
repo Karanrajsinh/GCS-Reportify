@@ -10,6 +10,10 @@ import { TimeRange, PredefinedTimeRange } from '@/lib/types';
 const RequestSchema = z.object({
     siteUrl: z.string().min(1, 'Site URL is required'),
     timeRanges: z.array(z.enum(['last7days', 'last28days', 'last3months'])).optional(),
+    customTimeRanges: z.array(z.object({
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be in YYYY-MM-DD format'),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be in YYYY-MM-DD format'),
+    })).optional(),
     rowLimit: z.number().int().min(1).max(25000).default(1000),
 });
 
@@ -20,6 +24,8 @@ const SearchAnalyticsRowSchema = z.object({
     impressions: z.number(),
     ctr: z.number(),
     position: z.number(),
+    intent: z.string().optional(),
+    category: z.string().optional(),
 });
 
 // Type guard for PredefinedTimeRange
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { siteUrl, timeRanges = ['last7days', 'last28days', 'last3months'], rowLimit } = parsedBody.data;
+        const { siteUrl, timeRanges = [], customTimeRanges = [], rowLimit } = parsedBody.data;
 
         // Get Google OAuth access token
         let token;
@@ -109,9 +115,11 @@ export async function POST(request: NextRequest) {
 
         // Fetch data for each time range
         const results: Record<string, { rows: any[]; metadata: any }> = {};
-        for (const timeRange of timeRanges as PredefinedTimeRange[]) {
+
+        // Process predefined time ranges
+        for (const timeRange of timeRanges) {
             const { startDate, endDate } = getDateRangeFromPredefined(timeRange);
-            console.log('Fetching data for:', { siteUrl, timeRange, startDate, endDate, rowLimit });
+            console.log('Fetching data for predefined range:', { siteUrl, timeRange, startDate, endDate, rowLimit });
 
             let data;
             try {
@@ -138,7 +146,6 @@ export async function POST(request: NextRequest) {
                 );
             }
 
-            // Process and validate rows
             const rows = data.rows?.map((row) => ({
                 query: row.keys?.[0] || '',
                 clicks: row.clicks || 0,
@@ -162,15 +169,121 @@ export async function POST(request: NextRequest) {
             };
         }
 
+        // Process custom time ranges
+        for (const customRange of customTimeRanges) {
+            const { startDate, endDate } = customRange;
+            const customRangeKey = `custom_${startDate}_${endDate}`;
+            console.log('Fetching data for custom range:', { siteUrl, startDate, endDate, rowLimit });
+
+            let data;
+            try {
+                const response = await searchConsole.searchanalytics.query({
+                    siteUrl,
+                    requestBody: {
+                        startDate,
+                        endDate,
+                        dimensions: ['query'],
+                        rowLimit,
+                    },
+                });
+                data = response.data;
+                console.log(`Received GSC data for custom range ${customRangeKey}:`, {
+                    rowCount: data.rows?.length || 0,
+                    responseMetadata: data.responseAggregationType,
+                    sampleRow: data.rows?.[0],
+                });
+            } catch (gscError: any) {
+                console.error(`GSC API Call Error for custom range ${customRangeKey}:`, gscError.response?.data || gscError.message);
+                return NextResponse.json(
+                    { error: `Failed to fetch GSC data for custom range: ` + (gscError.response?.data?.error?.message || gscError.message) },
+                    { status: gscError.response?.status || 500 }
+                );
+            }
+
+            const rows = data.rows?.map((row) => ({
+                query: row.keys?.[0] || '',
+                clicks: row.clicks || 0,
+                impressions: row.impressions || 0,
+                ctr: row.ctr || 0,
+                position: row.position || 0,
+            })) || [];
+
+            const parsedRows = z.array(SearchAnalyticsRowSchema).safeParse(rows);
+            if (!parsedRows.success) {
+                console.error(`Invalid GSC data format for custom range ${customRangeKey}:`, parsedRows.error);
+                return NextResponse.json(
+                    { error: `Invalid GSC data format for custom range` },
+                    { status: 500 }
+                );
+            }
+
+            results[customRangeKey] = {
+                rows: parsedRows.data,
+                metadata: { startDate, endDate, totalRows: rows.length },
+            };
+        }
+
+        // Get all unique queries from all time ranges
+        const uniqueQueries = new Set<string>();
+        Object.values(results).forEach(({ rows }) => {
+            rows.forEach((row: { query: string }) => {
+                uniqueQueries.add(row.query);
+            });
+        });
+        console.log('[GSC Data] Unique queries collected:', Array.from(uniqueQueries));
+
+        // Get intent data for all unique queries in one batch
+        const intentMap = new Map<string, { intent: string; category: string }>();
+        try {
+            console.log('[GSC Data] Fetching intent data...');
+            const intentResponse = await fetch(`${request.nextUrl.origin}/api/gemini/intent`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ queries: Array.from(uniqueQueries) }),
+            });
+            
+            if (intentResponse.ok) {
+                const intentDataArray = await intentResponse.json();
+                // Create a map from the array response
+                intentDataArray.forEach((data: { query: string; intent: string; category: string }) => {
+                    intentMap.set(data.query, {
+                        intent: data.intent || '',
+                        category: data.category || ''
+                    });
+                });
+
+            } else {
+                console.error('[GSC Data] Failed to get intent data:', await intentResponse.text());
+            }
+        } catch (error) {
+            console.error('Failed to get intent data:', error);
+        }
+
+        // Add intent data to all rows in results
+        Object.keys(results).forEach(timeRange => {
+            results[timeRange].rows = results[timeRange].rows.map(row => {
+                const intentData = intentMap.get(row.query);
+                const updatedRow = {
+                    ...row,
+                    intent: intentData?.intent || '',
+                    category: intentData?.category || '',
+                };
+                return updatedRow;
+            });
+        });
+
+        // Combine all time ranges for aggregation
+            const allTimeRanges = [...timeRanges, ...customTimeRanges.map(range => `custom_${range.startDate}_${range.endDate}`)];
+
         // Aggregate metrics for each time range
         const aggregated = Object.fromEntries(
-            timeRanges.map((timeRange) => {
+            allTimeRanges.map((timeRange) => {
                 const rows = results[timeRange].rows;
                 const totalClicks = rows.reduce((sum, row) => sum + row.clicks, 0);
                 const totalImpressions = rows.reduce((sum, row) => sum + row.impressions, 0);
                 const avgCtr = rows.length ? rows.reduce((sum, row) => sum + row.ctr, 0) / rows.length : 0;
                 const avgPosition = rows.length ? rows.reduce((sum, row) => sum + row.position, 0) / rows.length : 0;
-
+                
                 return [
                     timeRange,
                     {
@@ -187,6 +300,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             aggregated,
             siteUrl,
+            // Include all individual search queries and their metrics for each time range
+            searchQueries: Object.fromEntries(
+                allTimeRanges.map((timeRange) => [
+                    timeRange,
+                    {
+                        queries: results[timeRange].rows,
+                        metadata: results[timeRange].metadata,
+                    },
+                ])
+            ),
         });
     } catch (error: any) {
         console.error('Error fetching GSC data:', error);
