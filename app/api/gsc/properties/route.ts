@@ -1,7 +1,18 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextResponse, NextRequest } from 'next/server';
 import { google } from 'googleapis';
-import axios from 'axios';
+
+// Cache timeout of 5 minutes
+const CACHE_MAX_AGE = 300;
+
+interface GSCSiteEntry {
+  siteUrl: string;
+  permissionLevel: string;
+}
+
+interface GSCResponse {
+  siteEntry?: GSCSiteEntry[];
+}
 
 /**
  * Fetches GSC properties for the authenticated user.
@@ -19,69 +30,59 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get Google OAuth access token from Clerk user session
-    let token;
+    // Get Google OAuth access token with timeout
+    let token: string;
     try {
-      const oauthToken = await clerkClient.users.getUserOauthAccessToken(userId, 'oauth_google');
+      const oauthToken = await Promise.race([
+        clerkClient.users.getUserOauthAccessToken(userId, 'oauth_google'),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Token fetch timeout')), 5000)
+        )
+      ]) as Awaited<ReturnType<typeof clerkClient.users.getUserOauthAccessToken>>;
+
       token = oauthToken?.[0]?.token;
-      console.log('Clerk OAuth Token:', token ? { tokenLength: token.length, tokenPreview: token.slice(0, 10) + '...' } : 'No OAuth token');
+      if (!token) throw new Error('No OAuth token available');
     } catch (oauthError: any) {
-      console.error('Clerk OAuth Token Error:', oauthError);
+      console.error('OAuth Token Error:', oauthError);
       return NextResponse.json(
-        { error: 'Failed to retrieve Google OAuth token from Clerk' },
+        { error: 'Failed to retrieve Google OAuth token' },
         { status: 401 }
       );
     }
 
-    if (!token) {
-      return NextResponse.json(
-        { error: 'No Google OAuth token available in user session' },
-        { status: 401 }
-      );
-    }
-
-    // Validate token with Google's tokeninfo endpoint
-    try {
-      const tokenInfo = await axios.get(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${token}`);
-      console.log('Google Token Info:', tokenInfo.data);
-      if (!tokenInfo.data.scope?.includes('https://www.googleapis.com/auth/webmasters.readonly')) {
-        return NextResponse.json(
-          { error: 'Token missing required webmasters.readonly scope' },
-          { status: 401 }
-        );
-      }
-    } catch (tokenError: any) {
-      console.error('Token Validation Error:', tokenError.response?.data || tokenError.message);
-      return NextResponse.json(
-        { error: 'Invalid Google OAuth token' },
-        { status: 401 }
-      );
-    }
-
-    // Create OAuth2 client
+    // Initialize Search Console API
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: token });
 
-    // Initialize Search Console API
     const searchConsole = google.webmasters({
       version: 'v3',
-      auth: oauth2Client,
+      auth: oauth2Client
     });
 
-    // Fetch sites
-    const { data } = await searchConsole.sites.list();
-    console.log('GSC Sites Response:', data);
+    // Fetch sites with timeout
+    const result = await Promise.race([
+      searchConsole.sites.list(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('GSC API timeout')), 5000)
+      )
+    ]) as { data: GSCResponse };
 
-    // Extract and return the properties
-    return NextResponse.json({
-      properties: data.siteEntry?.map(site => ({
+    // Prepare response with cache headers
+    const response = NextResponse.json({
+      properties: result.data.siteEntry?.map((site: GSCSiteEntry) => ({
         siteUrl: site.siteUrl,
         permissionLevel: site.permissionLevel,
       })) || [],
     });
+
+    // Add cache headers
+    response.headers.set('Cache-Control', `private, max-age=${CACHE_MAX_AGE}`);
+    response.headers.set('Expires', new Date(Date.now() + CACHE_MAX_AGE * 1000).toUTCString());
+
+    return response;
+
   } catch (error: any) {
-    console.error('Error fetching GSC properties:', error);
-    console.error('GSC API Error Details:', error.response?.data || error.message);
+    console.error('Error fetching GSC properties:', error.message);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch GSC properties' },
       { status: error.response?.status || 500 }

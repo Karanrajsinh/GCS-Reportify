@@ -741,7 +741,7 @@ export function ReportTable() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[250px]">Query</TableHead>
-                  <TableHead className="w-[200px] text-center">Intent</TableHead>
+                  <TableHead className="w-[200px] border-x text-center">Intent</TableHead>
                   {columns.map((block, index) => (
                     <ColumnHeader
                       key={index}
