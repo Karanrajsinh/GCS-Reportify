@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   // Check WEBHOOK_SECRET first
-  const webhookSecret = process.env.WEBHOOK_SECRET;
+  const webhookSecret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
   if (!webhookSecret) {
     console.error('WEBHOOK_SECRET is not set');
     return new Response('Server configuration error', {
