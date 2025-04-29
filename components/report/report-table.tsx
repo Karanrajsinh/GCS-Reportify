@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { ReportBlock, useReportConfig } from '@/contexts/report-config-context';
-import { fetchGscData } from '@/lib/api/gsc';
 import { formatTimeRange } from '@/lib/utils/date';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
@@ -12,7 +11,6 @@ import { toast } from 'sonner';
 import { PredefinedTimeRange } from '@/lib/types';
 import { exportToCsv } from '@/lib/api/export';
 import { useDroppable } from '@dnd-kit/core';
-import { DraggableBlock } from './DraggableBlock';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -42,6 +40,7 @@ export function ReportTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [columns, setColumns] = useState<Array<ReportBlock | null>>([null, null, null]);
+  const [exportOption, setExportOption] = useState('current'); // 'current' or 'all'
 
   // Define available blocks to match the ones in the report builder
   const availableBlocks: ReportBlock[] = [
@@ -175,12 +174,15 @@ export function ReportTable() {
 
       // Check if this block is already in the table
       const isDuplicate = reportBlocks.some(existingBlock => {
-        if (block.type === 'metric' && existingBlock.type === 'metric') {
-          // Now TypeScript knows both blocks are MetricBlocks
-          return existingBlock.metric === block.metric &&
-            existingBlock.timeRange === block.timeRange;
-        }
-        return false;
+        // First check if block exists and is a metric type
+        if (!block || block.type !== 'metric') return false;
+
+        // Then check if existingBlock is also a metric type
+        if (existingBlock.type !== 'metric') return false;
+
+        // Now TypeScript knows both are MetricBlocks
+        return existingBlock.metric === block.metric &&
+          existingBlock.timeRange === block.timeRange;
       });
 
       if (isDuplicate) {
@@ -458,7 +460,7 @@ export function ReportTable() {
           siteUrl: selectedProperty, // Use selected property or default
           timeRanges,
           customTimeRanges,
-          rowLimit: 1000,
+          rowLimit: 100,
         }),
       });
 
@@ -532,6 +534,18 @@ export function ReportTable() {
                   }
                 }
               }
+            }
+          });
+
+          // Add intent and category data
+          Object.values(data.searchQueries).forEach((timeRangeData: any) => {
+            if (timeRangeData.queries && Array.isArray(timeRangeData.queries)) {
+              timeRangeData.queries.forEach((queryDataFromTimeRange: any) => {
+                if (queryDataFromTimeRange.query === query) {
+                  queryData.intent = queryDataFromTimeRange.intent;
+                  queryData.category = queryDataFromTimeRange.category;
+                }
+              });
             }
           });
 
@@ -640,10 +654,12 @@ export function ReportTable() {
       return;
     }
 
+    const dataToExport = exportOption === 'current' ? currentPageData : tableData;
+
     // Format data for export
-    const exportData = tableData.map(item => {
+    const exportData = dataToExport.map((item) => {
       const formattedItem: any = {
-        query: item.query,
+        'Query': item.query,
       };
 
       // Add intent data
@@ -651,11 +667,34 @@ export function ReportTable() {
       formattedItem['Category'] = item.category || '';
 
       // Add metrics data
-      reportBlocks.forEach(block => {
+      reportBlocks.forEach((block) => {
         if (block.type === 'metric') {
           const { metric, timeRange } = block;
-          const timeRangeLabel = formatTimeRange(timeRange);
-          formattedItem[`${metric} (${timeRangeLabel})`] = item[`${metric}_${timeRange}`];
+          let metricValue;
+          let timeRangeLabel = '';
+
+          if (typeof timeRange === 'string') {
+            // Convert timeRange to short format
+            switch (timeRange) {
+              case 'last7days':
+                timeRangeLabel = '7D';
+                break;
+              case 'last28days':
+                timeRangeLabel = '28D';
+                break;
+              case 'last3months':
+                timeRangeLabel = '3M';
+                break;
+              default:
+                timeRangeLabel = timeRange;
+            }
+            metricValue = item[`${metric}_${timeRange}`] !== undefined ? item[`${metric}_${timeRange}`] : '';
+          } else if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
+            timeRangeLabel = formatTimeRange(timeRange);
+            metricValue = item[`${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`] !== undefined ? item[`${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`] : '';
+          }
+
+          formattedItem[`${metric} (${timeRangeLabel})`] = metricValue;
         }
       });
 
@@ -724,6 +763,21 @@ export function ReportTable() {
             )}
             {isLoading ? "Fetching..." : "Fetch Data"}
           </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Export:</span>
+            <Select
+              value={exportOption}
+              onValueChange={(value) => setExportOption(value)}
+            >
+              <SelectTrigger className="w-30">
+                <SelectValue placeholder="Select export option" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current">Current Page</SelectItem>
+                <SelectItem value="all">All Data</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             onClick={handleExport}
             disabled={tableData.length === 0}
@@ -742,6 +796,8 @@ export function ReportTable() {
                 <TableRow>
                   <TableHead className="w-[250px]">Query</TableHead>
                   <TableHead className="w-[200px] border-x text-center">Intent</TableHead>
+                  <TableHead className="w-[100px] border-x text-center">Category</TableHead>
+                  {/* Render the column headers dynamically based on the columns state */}
                   {columns.map((block, index) => (
                     <ColumnHeader
                       key={index}
@@ -830,7 +886,7 @@ export function ReportTable() {
               <TableBody>
                 {currentPageData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={columns.length + 3} className="h-[calc(80vh-18rem)] text-center">
+                    <TableCell colSpan={columns.length + 4} className="h-[calc(80vh-18rem)] text-center">
                       <div className="flex flex-col items-center mx-auto justify-center text-muted-foreground">
                         <p>No data available</p>
                         <p className="text-sm">Click &quot;Fetch Data&quot; to load your report</p>
@@ -841,14 +897,13 @@ export function ReportTable() {
                   currentPageData.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell className="font-medium border-x border-border">{item.query}</TableCell>
-                      <TableCell className="text-center border-x border-border">
-                        {item.intent ? (
-                          <div>
-                            <div className="font-medium">{item.category}</div>
-                            <div className="text-sm text-muted-foreground">{item.intent}</div>
-                          </div>
-                        ) : '-'}
-                      </TableCell>
+                      {item.intent ? (
+                        <>
+                          <TableCell className="text-center border-x border-border">{item.intent}</TableCell>
+                          <TableCell className="text-sm text-center text-muted-foreground">{item.category}</TableCell>
+                        </>
+
+                      ) : '-'}
                       {columns.map((column, colIndex) => (
                         <TableCell key={colIndex} className="text-center border-x border-border">
                           {column ? renderCellContent(column, item) : '-'}

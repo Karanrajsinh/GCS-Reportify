@@ -1,0 +1,72 @@
+// This is your Prisma schema file
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// User model to store website owners
+model User {
+  id        String    @id @map("_id")  // Using Clerk's ID
+  name      String?
+  email     String    @unique
+  websites  Website[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// Website model to store GSC properties
+model Website {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  url       String   @unique
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  reports   Report[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Report model to store report configurations
+model Report {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  websiteId String      @db.ObjectId
+  website   Website     @relation(fields: [websiteId], references: [id])
+  blocks    Block[]
+  queries   QueryData[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+// Block model to store metric and intent blocks
+model Block {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  reportId    String   @db.ObjectId
+  report      Report   @relation(fields: [reportId], references: [id])
+  type        String   // 'metric' or 'intent'
+  metric      String?  // for metric blocks: 'clicks', 'impressions', 'ctr', 'position'
+  timeRange   Json?    // for metric blocks: either string ('last7days', 'last28days', 'last3months') or object with startDate and endDate
+  position    Int      // order in the report
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// QueryData model to store query metrics
+model QueryData {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  reportId  String   @db.ObjectId
+  report    Report   @relation(fields: [reportId], references: [id])
+  query     String
+  metrics   Json     // Store metrics data for different time ranges
+  intent    String?
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reportId, query])
+}

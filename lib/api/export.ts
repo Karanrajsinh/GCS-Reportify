@@ -1,35 +1,25 @@
-import { ReportData } from '@/lib/types';
 import Papa from 'papaparse';
 
 /**
  * Exports report data to CSV format
  */
-export function exportToCsv(reportData: ReportData[], filename: string = 'gsc-report.csv') {
-  // Flatten the data structure for CSV format
-  const flattenedData = reportData.map(row => {
-    const flatRow: Record<string, any> = {
-      query: row.query,
-    };
-    
-    // Add metrics
-    Object.entries(row.metrics).forEach(([key, value]) => {
-      flatRow[key] = value;
-    });
-    
-    // Add intent data if available
-    if (row.intent) {
-      flatRow['intent_category'] = row.intent.category;
-      flatRow['intent_description'] = row.intent.description;
-    }
-    
-    return flatRow;
-  });
+export function exportToCsv(reportData: Record<string, any>[], filename: string = 'gsc-report.csv') {
+  // Data is already formatted correctly from report-table.tsx
+  const flattenedData = reportData;
   
   // Convert to CSV
-  const csv = Papa.unparse(flattenedData);
+  // Configure Papa Parse with options for better Excel compatibility
+  const csv = Papa.unparse(flattenedData, {
+    delimiter: ',',
+    quotes: true, // Always quote fields
+    quoteChar: '"',
+    header: true,
+    skipEmptyLines: true
+  });
   
-  // Create and download file
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  // Add BOM for Excel and create download file
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   
   const url = URL.createObjectURL(blob);

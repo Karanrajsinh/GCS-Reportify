@@ -103,7 +103,7 @@ export default function WebsitesPage() {
                                             <AlertCircle className="h-4 w-4" />
                                             <AlertTitle>No properties found</AlertTitle>
                                             <AlertDescription>
-                                                You don't have any Google Search Console properties. Please add a property to your Google Search Console account.
+                                                You don&apos;t have any Google Search Console properties. Please add a property to your Google Search Console account.
                                             </AlertDescription>
                                         </Alert>
                                     )}
