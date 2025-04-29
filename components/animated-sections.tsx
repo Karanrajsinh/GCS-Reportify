@@ -60,10 +60,12 @@ export function HeroSection() {
             variants={fadeInUp}
           >
             <SignInButton mode="modal">
-              <Button size="lg" className="group h-12 px-8 shadow-glow hover:shadow-none transition-all duration-300">
-                Get Started Free
-                <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </Button>
+              <Link href="/websites">
+                <Button size="lg" className="group h-12 px-8 shadow-glow hover:shadow-none transition-all duration-300">
+                  Get Started Free
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </Link>
             </SignInButton>
           </motion.div>
           <motion.div

@@ -2,14 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import { ReportBlock, useReportConfig } from '@/contexts/report-config-context';
-import { formatTimeRange } from '@/lib/utils/date';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, Download, ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
+import { Loader2, RefreshCw, Download, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PredefinedTimeRange } from '@/lib/types';
 import { exportToCsv } from '@/lib/api/export';
+import { useParams } from 'next/navigation';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useDroppable } from '@dnd-kit/core';
 import {
   ContextMenu,
@@ -33,409 +40,237 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from 'date-fns';
 
+// Create a separate component for the column header to handle drag and drop
+const ColumnHeader = ({
+  block,
+  index,
+  onRemoveBlock,
+  onAddColumn
+}: {
+  block: ReportBlock | null;
+  index: number;
+  onRemoveBlock: (id: string) => void;
+  onAddColumn: (block: ReportBlock, index: number) => void;
+}) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `column-${index}`,
+  });
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.classList.remove('bg-primary/10');
+
+    let block: ReportBlock | undefined;
+
+    try {
+      const jsonData = event.dataTransfer.getData('application/json');
+      if (jsonData) {
+        block = JSON.parse(jsonData);
+      } else {
+        const blockId = event.dataTransfer.getData('text/plain');
+        if (blockId) {
+          block = availableBlocks.find(b => b.id === blockId);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing dropped data:', error);
+    }
+
+    if (!block) return;
+
+    onAddColumn(block, index);
+  };
+
+  const getColumnHeaderText = () => {
+    if (!block) return "Drop metric here";
+
+    if (block.type === 'metric') {
+      const { metric, timeRange } = block;
+      const metricName = metric.charAt(0).toUpperCase() + metric.slice(1);
+
+      if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
+        return `${metricName} (custom)`;
+      }
+
+      let timeRangeLabel = '';
+      if (typeof timeRange === 'string') {
+        switch (timeRange) {
+          case 'last7days':
+            timeRangeLabel = 'L7D';
+            break;
+          case 'last28days':
+            timeRangeLabel = 'L28D';
+            break;
+          case 'last3months':
+            timeRangeLabel = 'L3M';
+            break;
+          default:
+            timeRangeLabel = timeRange;
+        }
+      }
+
+      return `${metricName} (${timeRangeLabel})`;
+    }
+
+    return "Unknown";
+  };
+
+  const getTooltipContent = () => {
+    if (!block || block.type !== 'metric') return null;
+    const { timeRange } = block;
+
+    if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
+      return `${timeRange.startDate} - ${timeRange.endDate}`;
+    }
+
+    return null;
+  };
+
+  return (
+    <TableHead
+      className={`w-[150px] border-x border-border text-center ${isOver ? 'bg-primary/5' : ''}`}
+      ref={setNodeRef}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.currentTarget.classList.add('bg-primary/10');
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.currentTarget.classList.remove('bg-primary/10');
+      }}
+      onDrop={handleDrop}
+    >
+      <ContextMenu>
+        <ContextMenuTrigger className="w-full h-full">
+          {block ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="h-10 flex items-center justify-center font-medium">
+                    {getColumnHeaderText()}
+                  </div>
+                </TooltipTrigger>
+                {getTooltipContent() && (
+                  <TooltipContent>
+                    <p>{getTooltipContent()}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <div className="h-10 flex items-center justify-center text-muted-foreground">
+              Drop metric here
+            </div>
+          )}
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {block && (
+            <ContextMenuItem
+              onClick={() => onRemoveBlock(block.id)}
+              className="text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Column
+            </ContextMenuItem>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
+    </TableHead>
+  );
+};
+
+// Available blocks for drag and drop
+const availableBlocks: ReportBlock[] = [
+  {
+    id: 'clicks_l7d',
+    type: 'metric',
+    metric: 'clicks',
+    timeRange: 'last7days'
+  },
+  {
+    id: 'impressions_l7d',
+    type: 'metric',
+    metric: 'impressions',
+    timeRange: 'last7days'
+  },
+  // ... other blocks
+];
+
 export function ReportTable() {
   const { selectedProperty, reportBlocks, addReportBlock, removeReportBlock } = useReportConfig();
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingFromDb, setIsFetchingFromDb] = useState(true);
   const [tableData, setTableData] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [columns, setColumns] = useState<Array<ReportBlock | null>>([null, null, null]);
-  const [exportOption, setExportOption] = useState('current'); // 'current' or 'all'
+  const [columns, setColumns] = useState<Array<ReportBlock | null>>([null, null, null]); // 3 droppable columns
+  const [exportOption, setExportOption] = useState('current');
+  const params = useParams();
+  const reportId = params.reportId as string;
 
-  // Define available blocks to match the ones in the report builder
-  const availableBlocks: ReportBlock[] = [
-    // Last 7 days blocks
-    {
-      id: 'clicks_l7d',
-      type: 'metric',
-      metric: 'clicks',
-      timeRange: 'last7days'
-    },
-    {
-      id: 'impressions_l7d',
-      type: 'metric',
-      metric: 'impressions',
-      timeRange: 'last7days'
-    },
-    {
-      id: 'ctr_l7d',
-      type: 'metric',
-      metric: 'ctr',
-      timeRange: 'last7days'
-    },
-    {
-      id: 'position_l7d',
-      type: 'metric',
-      metric: 'position',
-      timeRange: 'last7days'
-    },
-    // Last 28 days blocks
-    {
-      id: 'clicks_l28d',
-      type: 'metric',
-      metric: 'clicks',
-      timeRange: 'last28days'
-    },
-    {
-      id: 'impressions_l28d',
-      type: 'metric',
-      metric: 'impressions',
-      timeRange: 'last28days'
-    },
-    {
-      id: 'ctr_l28d',
-      type: 'metric',
-      metric: 'ctr',
-      timeRange: 'last28days'
-    },
-    {
-      id: 'position_l28d',
-      type: 'metric',
-      metric: 'position',
-      timeRange: 'last28days'
-    },
-    // Last 3 months blocks
-    {
-      id: 'clicks_l3m',
-      type: 'metric',
-      metric: 'clicks',
-      timeRange: 'last3months'
-    },
-    {
-      id: 'impressions_l3m',
-      type: 'metric',
-      metric: 'impressions',
-      timeRange: 'last3months'
-    },
-    {
-      id: 'ctr_l3m',
-      type: 'metric',
-      metric: 'ctr',
-      timeRange: 'last3months'
-    },
-    {
-      id: 'position_l3m',
-      type: 'metric',
-      metric: 'position',
-      timeRange: 'last3months'
+  // Function to fetch data from database
+  const fetchFromDatabase = async () => {
+    try {
+      const response = await fetch(`/api/reports/${reportId}`);
+      if (!response.ok) throw new Error('Failed to fetch report data');
+
+      const data = await response.json();
+
+      // Load blocks from database
+      if (data.blocks?.length > 0) {
+        data.blocks.forEach((block: any) => {
+          const reportBlock: ReportBlock = {
+            id: block.id,
+            type: block.type,
+            metric: block.metric,
+            timeRange: block.timeRange
+          };
+          addReportBlock(reportBlock, block.position);
+        });
+      }
+
+      // Load query data
+      if (data.queries?.length > 0) {
+        setTableData(data.queries.map((q: any) => ({
+          ...q.metrics,
+          query: q.metrics.query,
+          intent: q.intent || '-',
+          category: q.category || '-'
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching from database:', error);
+      toast.error('Failed to load saved report data');
+    } finally {
+      setIsFetchingFromDb(false);
     }
-  ];
-
-  // Create a separate component for the column header to handle drag and drop
-  const ColumnHeader = ({
-    block,
-    index,
-    onRemoveBlock,
-    onAddColumn
-  }: {
-    block: ReportBlock | null;
-    index: number;
-    onRemoveBlock: (id: string) => void;
-    onAddColumn: () => void;
-  }) => {
-    const { setNodeRef, isOver } = useDroppable({
-      id: `column-${index}`,
-    });
-
-    const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.currentTarget.classList.add('bg-primary/10');
-    };
-
-    const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.currentTarget.classList.remove('bg-primary/10');
-    };
-
-    const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.currentTarget.classList.remove('bg-primary/10');
-
-      // Try to get the block data from the dataTransfer
-      let block: ReportBlock | undefined;
-
-      try {
-        // First try to get JSON data (for custom time ranges)
-        const jsonData = event.dataTransfer.getData('application/json');
-        if (jsonData) {
-          block = JSON.parse(jsonData);
-        } else {
-          // Fall back to the standard text/plain data (for predefined blocks)
-          const blockId = event.dataTransfer.getData('text/plain');
-          if (blockId) {
-            block = availableBlocks.find(b => b.id === blockId);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing dropped data:', error);
-      }
-
-      if (!block) return;
-
-      // Check if this block is already in the table
-      const isDuplicate = reportBlocks.some(existingBlock => {
-        // First check if block exists and is a metric type
-        if (!block || block.type !== 'metric') return false;
-
-        // Then check if existingBlock is also a metric type
-        if (existingBlock.type !== 'metric') return false;
-
-        // Now TypeScript knows both are MetricBlocks
-        return existingBlock.metric === block.metric &&
-          existingBlock.timeRange === block.timeRange;
-      });
-
-      if (isDuplicate) {
-        toast.error("This metric is already in the table");
-        return;
-      }
-
-      // Create a new block with a unique ID to avoid conflicts
-      const newBlock = {
-        ...block,
-        id: `${block.id}_${Date.now()}`
-      };
-
-      // Update the columns array
-      const newColumns = [...columns];
-      newColumns[index] = newBlock;
-      setColumns(newColumns);
-
-      // Also update the global state
-      addReportBlock(newBlock, index);
-
-      // Do NOT trigger a fetch here - let the user manually fetch when ready
-      // Also do NOT call onMetricDrop as it's not needed
-    };
-
-    // Format the column header text
-    const getColumnHeaderText = () => {
-      if (!block) return "Drop metric here";
-
-      if (block.type === 'metric') {
-        const { metric, timeRange } = block;
-        const metricName = metric.charAt(0).toUpperCase() + metric.slice(1);
-
-        // Check if it's a custom time range
-        if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
-          return `${metricName} (custom)`;
-        }
-
-        // Create short time range label
-        let timeRangeLabel = '';
-        if (typeof timeRange === 'string') {
-          switch (timeRange) {
-            case 'last7days':
-              timeRangeLabel = 'L7D';
-              break;
-            case 'last28days':
-              timeRangeLabel = 'L28D';
-              break;
-            case 'last3months':
-              timeRangeLabel = 'L3M';
-              break;
-            default:
-              timeRangeLabel = timeRange;
-          }
-        }
-
-        return `${metricName} (${timeRangeLabel})`;
-      } else if (block.type === 'intent') {
-        return "Intent";
-      }
-
-      return "Unknown";
-    };
-
-    // Get the tooltip content for the column header
-    const getColumnHeaderTooltip = () => {
-      if (!block || block.type !== 'metric') return null;
-
-      const { timeRange } = block;
-
-      // Only show tooltip for custom time ranges
-      if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
-        const startDate = new Date(timeRange.startDate);
-        const endDate = new Date(timeRange.endDate);
-        return `${format(startDate, 'd MMM')} - ${format(endDate, 'd MMM')}`;
-      }
-
-      return null;
-    };
-
-    const dateRangeTooltip = getColumnHeaderTooltip();
-
-    return (
-      <TableHead
-        className={`w-[150px] border-x border-border text-center ${isOver ? 'bg-primary/5' : ''}`}
-        ref={setNodeRef}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <ContextMenu>
-          <ContextMenuTrigger className="w-full h-full">
-            {block ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="h-10 flex items-center justify-center font-medium">
-                      {getColumnHeaderText()}
-                    </div>
-                  </TooltipTrigger>
-                  {dateRangeTooltip && (
-                    <TooltipContent>
-                      <p>{dateRangeTooltip}</p>
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <div className="h-10 flex items-center justify-center text-muted-foreground">
-                Drop metric here
-              </div>
-            )}
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            {block && (
-              <ContextMenuItem
-                onClick={() => onRemoveBlock(block.id)}
-                className="text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Column
-              </ContextMenuItem>
-            )}
-          </ContextMenuContent>
-        </ContextMenu>
-      </TableHead>
-    );
   };
 
-  // Debug: Log tableData whenever it changes
+  // Fetch data from database on mount
   useEffect(() => {
-    console.log('Table data updated:', tableData);
-    // Reset to first page when data changes
-    setCurrentPage(1);
-  }, [tableData]);
+    fetchFromDatabase();
+  }, [reportId]);
 
-  // Update columns when reportBlocks change
-  useEffect(() => {
-    // Create a new array with the same length as the current columns
-    const newColumns = new Array(columns.length).fill(null);
-
-    // Place each block in its corresponding column based on its position in reportBlocks
-    reportBlocks.forEach((block, index) => {
-      if (index < newColumns.length) {
-        newColumns[index] = block;
-      } else {
-        // If we need more columns, add them
-        newColumns.push(block);
-      }
-    });
-
-    setColumns(newColumns);
-  }, [reportBlocks]);
-
-  // Calculate pagination values
-  const totalPages = Math.ceil(tableData.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const endIndex = startIndex + rowsPerPage;
-  const currentPageData = tableData.slice(startIndex, endIndex);
-
-  // Calculate the current page range
-  const currentPageRange = Math.floor((currentPage - 1) / 5) * 5;
-  const startPageInRange = currentPageRange + 1;
-  const endPageInRange = Math.min(startPageInRange + 4, totalPages);
-
-  // Generate page ranges for the dropdown
-  const pageRanges = Array.from({ length: Math.ceil(totalPages / 5) }, (_, i) => {
-    const start = i * 5 + 1;
-    const end = Math.min((i + 1) * 5, totalPages);
-    return { start, end, label: `${start}-${end}` };
-  });
-
-  // Handle page navigation
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
+  // Handle removing a block
+  const handleRemoveBlock = (blockId: string) => {
+    removeReportBlock(blockId);
   };
 
-  // Handle rows per page change
-  const handleRowsPerPageChange = (value: string) => {
-    const newRowsPerPage = parseInt(value);
-    setRowsPerPage(newRowsPerPage);
-    setCurrentPage(1); // Reset to first page when changing rows per page
-  };
-
-
-
-  // Function to render cell content based on block type and data
-  const renderCellContent = (block: ReportBlock, item: any) => {
-    if (block.type === 'metric') {
-      const { metric, timeRange } = block;
-
-      // Create a key that includes both metric and timeRange
-      let dataKey = '';
-
-      if (typeof timeRange === 'string') {
-        dataKey = `${metric}_${timeRange}`;
-      } else if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
-        dataKey = `${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`;
-      }
-
-      // Check if the metric exists in the item or if it's undefined/null
-      if (item[dataKey] === undefined || item[dataKey] === null) {
-        return '-';
-      }
-
-      // Format the value based on metric type
-      if (metric === 'ctr') {
-        return `${(item[dataKey] * 100).toFixed(2)}%`;
-      } else if (metric === 'position') {
-        return item[dataKey].toFixed(1);
-      } else {
-        return item[dataKey].toLocaleString();
-      }
-    } else if (block.type === 'intent') {
-      // For intent blocks, we need to check if the intent data exists
-      if (!item.intent || !item.category) {
-        return (
-          <div>
-            <div className="font-medium">-</div>
-            <div className="text-sm text-muted-foreground">-</div>
-          </div>
-        );
-      }
-
-      return (
-        <div>
-          <div className="font-medium">{item.category}</div>
-          <div className="text-sm text-muted-foreground">{item.intent}</div>
-        </div>
-      );
-    }
-    return '-';
-  };
-
+  // Fetch data from GSC API
   const fetchInsights = async () => {
     try {
       setIsLoading(true);
 
-      // Extract time ranges and metrics from report blocks
       const timeRanges: PredefinedTimeRange[] = [];
       const metrics: string[] = [];
       const customTimeRanges: { startDate: string; endDate: string }[] = [];
 
       reportBlocks.forEach(block => {
         if (block.type === 'metric') {
-          // Include both predefined and custom time ranges
           if (typeof block.timeRange === 'string') {
             timeRanges.push(block.timeRange);
             metrics.push(block.metric);
           } else if (typeof block.timeRange === 'object' && block.timeRange.startDate && block.timeRange.endDate) {
-            // Add custom time range
             customTimeRanges.push({
               startDate: block.timeRange.startDate,
               endDate: block.timeRange.endDate
@@ -450,37 +285,27 @@ export function ReportTable() {
         return;
       }
 
-      // Make API call to fetch data
       const response = await fetch('/api/gsc/data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          siteUrl: selectedProperty, // Use selected property or default
+          siteUrl: selectedProperty,
           timeRanges,
           customTimeRanges,
           rowLimit: 100,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch data');
-      }
+      if (!response.ok) throw new Error('Failed to fetch data');
 
       const data = await response.json();
-      console.log('Fetched data:', data); // Debug log
-
-      // Process the data for the table
       const processedData: any[] = [];
 
-      // Check if we have searchQueries data
       if (data.searchQueries) {
-        // Get all unique queries across all time ranges
         const allQueries = new Set<string>();
 
-        // Collect all unique queries
         Object.values(data.searchQueries).forEach((timeRangeData: any) => {
           if (timeRangeData.queries && Array.isArray(timeRangeData.queries)) {
             timeRangeData.queries.forEach((query: any) => {
@@ -489,115 +314,41 @@ export function ReportTable() {
           }
         });
 
-        // Create a data object for each unique query
         allQueries.forEach(query => {
+          // Find query data with intent from any time range
+          const timeRangeKey = Object.keys(data.searchQueries)[0];
+          const queryInfo = data.searchQueries[timeRangeKey].queries.find(
+            (q: any) => q.query === query
+          );
+
           const queryData: any = {
-            query: query,
+            query,
+            intent: queryInfo?.intent || '-',
+            category: queryInfo?.category || '-'
           };
 
-          // Add metrics data for each report block
           reportBlocks.forEach(block => {
             if (block.type === 'metric') {
-              const metric = block.metric;
+              const { metric, timeRange } = block;
+              let timeRangeKey;
+              let dataKey;
 
-              if (typeof block.timeRange === 'string') {
-                const timeRange = block.timeRange;
-
-                // Find the query in the searchQueries data for this specific time range
-                const timeRangeQueries = data.searchQueries[timeRange]?.queries || [];
-                const queryRow = timeRangeQueries.find((row: any) => row.query === query);
-
-                if (queryRow) {
-                  // Use the actual value from the query row
-                  queryData[`${metric}_${timeRange}`] = queryRow[metric.toLowerCase()];
-                } else {
-                  // Default to 0 if query not found in this time range
-                  queryData[`${metric}_${timeRange}`] = 0;
-                }
-              } else if (typeof block.timeRange === 'object' && block.timeRange.startDate && block.timeRange.endDate) {
-                // Handle custom time range
-                const customKey = `custom_${block.timeRange.startDate}_${block.timeRange.endDate}`;
-                const customQueries = data.searchQueries[customKey]?.queries || [];
-                const queryRow = customQueries.find((row: any) => row.query === query);
-
-                if (queryRow) {
-                  // Use the actual value from the query row
-                  queryData[`${metric}_custom_${block.timeRange.startDate}_${block.timeRange.endDate}`] = queryRow[metric.toLowerCase()];
-                } else {
-                  // Check if the custom range exists in the data
-                  if (data.searchQueries[customKey]) {
-                    // If it exists but has no rows, set to null
-                    queryData[`${metric}_custom_${block.timeRange.startDate}_${block.timeRange.endDate}`] = null;
-                  } else {
-                    // Default to 0 if query not found in this time range
-                    queryData[`${metric}_custom_${block.timeRange.startDate}_${block.timeRange.endDate}`] = 0;
-                  }
-                }
+              if (typeof timeRange === 'string') {
+                timeRangeKey = timeRange;
+                dataKey = `${metric}_${timeRange}`;
+              } else if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
+                timeRangeKey = `custom_${timeRange.startDate}_${timeRange.endDate}`;
+                dataKey = `${metric}_${timeRangeKey}`;
               }
-            }
-          });
 
-          // Add intent and category data
-          Object.values(data.searchQueries).forEach((timeRangeData: any) => {
-            if (timeRangeData.queries && Array.isArray(timeRangeData.queries)) {
-              timeRangeData.queries.forEach((queryDataFromTimeRange: any) => {
-                if (queryDataFromTimeRange.query === query) {
-                  queryData.intent = queryDataFromTimeRange.intent;
-                  queryData.category = queryDataFromTimeRange.category;
-                }
-              });
-            }
-          });
-
-          processedData.push(queryData);
-        });
-      } else if (data.rows && Array.isArray(data.rows)) {
-        // Fallback to the old data structure if searchQueries is not available
-        data.rows.forEach((row: any) => {
-          // Create a data object for this query
-          const queryData: any = {
-            query: row.keys[0], // The query is in the first element of keys array
-          };
-
-          // Add metrics data for each report block
-          reportBlocks.forEach(block => {
-            if (block.type === 'metric') {
-              const metric = block.metric;
-
-              if (typeof block.timeRange === 'string') {
-                const timeRange = block.timeRange;
-
-                // Find the corresponding data in the response
-                if (data.aggregated && data.aggregated[timeRange] && data.aggregated[timeRange][metric.toLowerCase()]) {
-                  queryData[`${metric}_${timeRange}`] = data.aggregated[timeRange][metric.toLowerCase()];
-                } else {
-                  // If data not found in aggregated, try to find in rows
-                  const rowData = row.data.find((item: any) =>
-                    item.timeRange === timeRange && item.metric === metric.toLowerCase()
+              if (timeRangeKey) {
+                const timeRangeData = data.searchQueries[timeRangeKey];
+                if (timeRangeData && timeRangeData.queries) {
+                  const queryDataFromTimeRange = timeRangeData.queries.find(
+                    (q: any) => q.query === query
                   );
-                  if (rowData) {
-                    queryData[`${metric}_${timeRange}`] = rowData.value;
-                  } else {
-                    // Default to 0 if no data found
-                    queryData[`${metric}_${timeRange}`] = 0;
-                  }
-                }
-              } else if (typeof block.timeRange === 'object' && block.timeRange.startDate && block.timeRange.endDate) {
-                // Handle custom time range
-                const customKey = `custom_${block.timeRange.startDate}_${block.timeRange.endDate}`;
-
-                if (data.aggregated && data.aggregated[customKey] && data.aggregated[customKey][metric.toLowerCase()]) {
-                  queryData[`${metric}_custom_${block.timeRange.startDate}_${block.timeRange.endDate}`] = data.aggregated[customKey][metric.toLowerCase()];
-                } else {
-                  // If data not found in aggregated, try to find in rows
-                  const rowData = row.data.find((item: any) =>
-                    item.timeRange === customKey && item.metric === metric.toLowerCase()
-                  );
-                  if (rowData) {
-                    queryData[`${metric}_custom_${block.timeRange.startDate}_${block.timeRange.endDate}`] = rowData.value;
-                  } else {
-                    // Default to 0 if no data found
-                    queryData[`${metric}_custom_${block.timeRange.startDate}_${block.timeRange.endDate}`] = 0;
+                  if (queryDataFromTimeRange) {
+                    queryData[dataKey] = queryDataFromTimeRange[metric];
                   }
                 }
               }
@@ -606,378 +357,409 @@ export function ReportTable() {
 
           processedData.push(queryData);
         });
-      } else {
-        // If no data available, create a sample row for testing
-        const sampleData = {
-          query: "macbook list in order",
-          clicks_last7days: 120,
-          impressions_last7days: 1500,
-          ctr_last7days: 0.08,
-          position_last7days: 3.5
-        };
-        processedData.push(sampleData);
-      }
 
-      console.log('Processed data:', processedData); // Debug log
-      setTableData(processedData);
-      toast.success("Data fetched successfully");
-    } catch (error: any) {
-      console.error('Error fetching insights:', error);
-      toast.error(error.message || "Failed to fetch insights");
+        setTableData(processedData);
 
-      // Add sample data for testing if fetch fails
-      const sampleData = [
-        {
-          query: "macbook list in order",
-          clicks_last7days: 120,
-          impressions_last7days: 1500,
-          ctr_last7days: 0.08,
-          position_last7days: 3.5
-        },
-        {
-          query: "best macbook for video editing",
-          clicks_last7days: 85,
-          impressions_last7days: 1200,
-          ctr_last7days: 0.07,
-          position_last7days: 4.2
+        // Save blocks and table data to database
+        try {
+          await fetch(`/api/reports/${reportId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tableData: processedData,
+              blocks: reportBlocks.map((block, index) => ({
+                type: block.type,
+                metric: block.type === 'metric' ? block.metric : null,
+                timeRange: block.type === 'metric' ? block.timeRange : null,
+                position: index
+              }))
+            }),
+          });
+        } catch (error) {
+          console.error('Error saving to database:', error);
+          toast.error('Failed to save report data');
         }
-      ];
-      setTableData(sampleData);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Failed to fetch data from Google Search Console');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleExport = () => {
-    if (tableData.length === 0) {
-      toast.error("No data to export. Please fetch data first.");
+  // Update columns when reportBlocks change
+  useEffect(() => {
+    const newColumns = new Array(3).fill(null); // Always maintain 3 droppable columns
+    reportBlocks.forEach((block, index) => {
+      if (index < newColumns.length) {
+        newColumns[index] = block;
+      }
+    });
+    setColumns(newColumns);
+  }, [reportBlocks]);
+
+  // Handle adding a new column
+  const handleAddColumn = (block: ReportBlock, index: number) => {
+    const isDuplicate = reportBlocks.some(existingBlock => {
+      if (block.type !== 'metric' || existingBlock.type !== 'metric') return false;
+      return existingBlock.metric === block.metric &&
+        existingBlock.timeRange === block.timeRange;
+    });
+
+    if (isDuplicate) {
+      toast.error("This metric is already in the table");
       return;
     }
 
-    const dataToExport = exportOption === 'current' ? currentPageData : tableData;
+    // Only allow adding to empty slots
+    if (columns[index] !== null) {
+      toast.error("This slot is already taken");
+      return;
+    }
 
-    // Format data for export
-    const exportData = dataToExport.map((item) => {
-      const formattedItem: any = {
-        'Query': item.query,
+    const newBlock = {
+      ...block,
+      id: `${block.id}_${Date.now()}`
+    };
+
+    addReportBlock(newBlock, index);
+  };
+
+  // Handle export
+  const handleExport = () => {
+    // Set data based on selected export option
+    const data = exportOption === 'all' ? tableData : currentPageData;
+
+    // Convert data to CSV format
+    const formattedData = data.map(item => {
+      // Start with basic fields
+      const row: Record<string, any> = {
+        Query: item.query,
+        Intent: item.intent || '-',
+        Category: item.category || '-'
       };
 
-      // Add intent data
-      formattedItem['Intent'] = item.intent || '';
-      formattedItem['Category'] = item.category || '';
-
-      // Add metrics data
-      reportBlocks.forEach((block) => {
-        if (block.type === 'metric') {
+      // Add metric columns
+      columns.forEach(block => {
+        if (block?.type === 'metric') {
           const { metric, timeRange } = block;
-          let metricValue;
+          const metricName = metric.charAt(0).toUpperCase() + metric.slice(1);
           let timeRangeLabel = '';
+          let dataKey = '';
 
           if (typeof timeRange === 'string') {
-            // Convert timeRange to short format
             switch (timeRange) {
               case 'last7days':
-                timeRangeLabel = '7D';
+                timeRangeLabel = 'L7D';
                 break;
               case 'last28days':
-                timeRangeLabel = '28D';
+                timeRangeLabel = 'L28D';
                 break;
               case 'last3months':
-                timeRangeLabel = '3M';
+                timeRangeLabel = 'L3M';
                 break;
               default:
                 timeRangeLabel = timeRange;
             }
-            metricValue = item[`${metric}_${timeRange}`] !== undefined ? item[`${metric}_${timeRange}`] : '';
-          } else if (typeof timeRange === 'object' && timeRange.startDate && timeRange.endDate) {
-            timeRangeLabel = formatTimeRange(timeRange);
-            metricValue = item[`${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`] !== undefined ? item[`${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`] : '';
+            dataKey = `${metric}_${timeRange}`;
+          } else if (timeRange.startDate && timeRange.endDate) {
+            timeRangeLabel = 'Custom';
+            dataKey = `${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`;
           }
 
-          formattedItem[`${metric} (${timeRangeLabel})`] = metricValue;
+          const columnName = `${metricName} (${timeRangeLabel})`;
+
+          // Get and format the value using the same logic as renderCellContent
+          let value = item[dataKey];
+          if (value === undefined || value === null) {
+            row[columnName] = '-';
+          } else if (metric === 'ctr') {
+            row[columnName] = `${(value * 100).toFixed(2)}%`;
+          } else if (metric === 'position') {
+            row[columnName] = value.toFixed(1);
+          } else {
+            row[columnName] = value.toLocaleString();
+          }
         }
       });
 
-      return formattedItem;
+      return row;
     });
 
-    exportToCsv(exportData, "gsc-report.csv");
-    toast.success("Report exported successfully");
+    exportToCsv(formattedData, 'gsc-report.csv');
   };
 
-  const handleRemoveBlock = (blockId: string) => {
-    // Find the column index of the block
-    const columnIndex = columns.findIndex(block => block?.id === blockId);
-    if (columnIndex === -1) return;
+  // Render cell content
+  const renderCellContent = (block: ReportBlock, item: any) => {
+    if (block.type !== 'metric') return '-';
 
-    // Remove the block from the global state
-    removeReportBlock(blockId);
+    const { metric, timeRange } = block;
+    const dataKey = typeof timeRange === 'string'
+      ? `${metric}_${timeRange}`
+      : `${metric}_custom_${timeRange.startDate}_${timeRange.endDate}`;
 
-    // Update local state by removing the entire column
-    const newColumns = [...columns];
-    newColumns.splice(columnIndex, 1);
-    setColumns(newColumns);
+    if (item[dataKey] === undefined || item[dataKey] === null) return '-';
+
+    if (metric === 'ctr') {
+      return `${(item[dataKey] * 100).toFixed(2)}%`;
+    }
+    if (metric === 'position') {
+      return item[dataKey].toFixed(1);
+    }
+    return item[dataKey].toLocaleString();
   };
 
-  const handleAddColumn = () => {
-    setColumns([...columns, null]);
+  // Handle rows per page change
+  const handleRowsPerPageChange = (value: string) => {
+    setRowsPerPage(parseInt(value));
+    setCurrentPage(1);
   };
 
-  // Always show the table, even if there are no report blocks
+  // Handle page navigation
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  // Calculate pagination values
+  const totalPages = Math.ceil(tableData.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const currentPageData = tableData.slice(startIndex, endIndex);
+  const currentPageRange = Math.floor((currentPage - 1) / 5) * 5;
+  const startPageInRange = currentPageRange + 1;
+  const endPageInRange = Math.min(startPageInRange + 4, totalPages);
+  const pageRanges = Array.from({ length: Math.ceil(totalPages / 5) }, (_, i) => {
+    const start = i * 5 + 1;
+    const end = Math.min((i + 1) * 5, totalPages);
+    return { start, end, label: `${start}-${end}` };
+  });
+
   return (
     <Card className="overflow-hidden">
-      <div className="p-6 flex items-center justify-between border-b">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-semibold tracking-tight">Report Preview</h2>
-          <p className="text-sm text-muted-foreground">
-            View and export your Google Search Console data
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Rows:</span>
+      <div className="border-b border-border p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Report Table</h2>
+          <div className="flex items-center gap-4">
             <Select
-              value={rowsPerPage.toString()}
-              onValueChange={(value) => handleRowsPerPageChange(value)}
+              value={`${rowsPerPage}`}
+              onValueChange={handleRowsPerPageChange}
             >
-              <SelectTrigger className="w-20">
-                <SelectValue placeholder="Select rows" />
+              <SelectTrigger className="w-[180px]">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="15">15</SelectItem>
-                <SelectItem value="20">20</SelectItem>
+                <SelectItem value="10">10 rows per page</SelectItem>
+                <SelectItem value="20">20 rows per page</SelectItem>
+                <SelectItem value="50">50 rows per page</SelectItem>
+                <SelectItem value="100">100 rows per page</SelectItem>
               </SelectContent>
             </Select>
+
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={tableData.length === 0}
+                    className="flex items-center gap-2"
+                  >
+                    Export
+                    <Download className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => {
+                    setExportOption('current');
+                    handleExport();
+                  }}>
+                    Export Current Page
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    setExportOption('all');
+                    handleExport();
+                  }}>
+                    Export All Data
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
+                variant="outline"
+                onClick={fetchInsights}
+                disabled={isLoading}
+                className="flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Fetch Data
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-          <Button
-            onClick={fetchInsights}
-            disabled={isLoading}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {isLoading ? "Fetching..." : "Fetch Data"}
-          </Button>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Export:</span>
-            <Select
-              value={exportOption}
-              onValueChange={(value) => setExportOption(value)}
-            >
-              <SelectTrigger className="w-30">
-                <SelectValue placeholder="Select export option" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current">Current Page</SelectItem>
-                <SelectItem value="all">All Data</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button
-            onClick={handleExport}
-            disabled={tableData.length === 0}
-            className="flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
         </div>
       </div>
-      <div className="relative h-[calc(80vh-15rem)]">
-        <div className="overflow-x-auto relative h-full">
-          <ScrollArea className="h-full">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[250px]">Query</TableHead>
-                  <TableHead className="w-[200px] border-x text-center">Intent</TableHead>
-                  <TableHead className="w-[100px] border-x text-center">Category</TableHead>
-                  {/* Render the column headers dynamically based on the columns state */}
-                  {columns.map((block, index) => (
-                    <ColumnHeader
-                      key={index}
-                      block={block}
-                      index={index}
-                      onRemoveBlock={handleRemoveBlock}
-                      onAddColumn={handleAddColumn}
-                    />
-                  ))}
-                  <TableHead className="w-[100px]">
-                    <div
-                      className="flex items-center justify-center h-8 w-full cursor-pointer"
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.add('bg-primary/10');
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove('bg-primary/10');
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.currentTarget.classList.remove('bg-primary/10');
 
-                        // Try to get the block data from the dataTransfer
-                        let block: ReportBlock | undefined;
-
-                        try {
-                          // First try to get JSON data (for custom time ranges)
-                          const jsonData = e.dataTransfer.getData('application/json');
-                          if (jsonData) {
-                            block = JSON.parse(jsonData);
-                          } else {
-                            // Fall back to the standard text/plain data (for predefined blocks)
-                            const blockId = e.dataTransfer.getData('text/plain');
-                            if (blockId) {
-                              block = availableBlocks.find(b => b.id === blockId);
-                            }
-                          }
-                        } catch (error) {
-                          console.error('Error parsing dropped data:', error);
+      <div className="overflow-x-auto relative  h-[calc(80vh-15rem)]">
+        <ScrollArea className="h-full">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[250px] border-r border-border">Query</TableHead>
+                <TableHead className="w-[250px] border-r border-border">Intent</TableHead>
+                <TableHead className="w-[150px] text-center border-r border-border">Category</TableHead>
+                {columns.map((block, index) => (
+                  <ColumnHeader
+                    key={index}
+                    block={block}
+                    index={index}
+                    onRemoveBlock={handleRemoveBlock}
+                    onAddColumn={handleAddColumn}
+                  />
+                ))}
+                <TableHead className="w-[100px]">
+                  <div className="h-10 flex items-center justify-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        const emptySlot = columns.findIndex(col => col === null);
+                        if (emptySlot === -1) {
+                          toast.error("All slots are taken. Remove a metric first.");
                         }
-
-                        if (!block) return;
-
-                        // Check if this block is already in the table
-                        const isDuplicate = reportBlocks.some(existingBlock => {
-                          if (block.type === 'metric' && existingBlock.type === 'metric') {
-                            return existingBlock.metric === block.metric &&
-                              existingBlock.timeRange === block.timeRange;
-                          }
-                          return false;
-                        });
-
-                        if (isDuplicate) {
-                          toast.error("This metric is already in the table");
-                          return;
-                        }
-
-                        // Create a new block with a unique ID
-                        const newBlock = {
-                          ...block,
-                          id: `${block.id}_${Date.now()}`
-                        };
-
-                        // Add a new column and place the block in it
-                        const newColumns = [...columns, newBlock];
-                        setColumns(newColumns);
-
-                        // Update the global state
-                        addReportBlock(newBlock);
                       }}
                     >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={handleAddColumn}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentPageData.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={columns.length + 4} className="h-[calc(80vh-18rem)] text-center">
-                      <div className="flex flex-col items-center mx-auto justify-center text-muted-foreground">
-                        <p>No data available</p>
-                        <p className="text-sm">Click &quot;Fetch Data&quot; to load your report</p>
-                      </div>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isFetchingFromDb ? (
+                // Loading skeleton state
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell>
+                      <Skeleton className="h-4 w-[200px]" />
                     </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-[100px]" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-[100px]" />
+                    </TableCell>
+                    {columns.map((_, colIndex) => (
+                      <TableCell key={colIndex}>
+                        <Skeleton className="h-4 w-[80px]" />
+                      </TableCell>
+                    ))}
                   </TableRow>
-                ) : (
-                  currentPageData.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium border-x border-border">{item.query}</TableCell>
-                      {item.intent ? (
-                        <>
-                          <TableCell className="text-center border-x border-border">{item.intent}</TableCell>
-                          <TableCell className="text-sm text-center text-muted-foreground">{item.category}</TableCell>
-                        </>
-
-                      ) : '-'}
-                      {columns.map((column, colIndex) => (
-                        <TableCell key={colIndex} className="text-center border-x border-border">
-                          {column ? renderCellContent(column, item) : '-'}
-                        </TableCell>
-                      ))}
-                      <TableCell className="border-x border-border"></TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </div>
+                ))
+              ) : currentPageData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={columns.length + 4} className="h-[calc(80vh-18rem)] text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <p className="text-muted-foreground">No data available</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                currentPageData.map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="border-r border-border font-medium">
+                      {item.query}
+                    </TableCell>
+                    <TableCell className="border-r border-border">
+                      {item.intent || '-'}
+                    </TableCell>
+                    <TableCell className="border-r text-center border-border">
+                      {item.category || '-'}
+                    </TableCell>
+                    {columns.map((column, colIndex) => (
+                      <TableCell key={colIndex} className="border-x border-border text-center">
+                        {column ? renderCellContent(column, item) : '-'}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </ScrollArea>
       </div>
 
-      {/* Pagination Controls */}
-      {tableData.length > 0 && (
-        <div className="flex items-center justify-between px-6 py-4 border-t">
-          <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{Math.min(endIndex, tableData.length)} of {tableData.length} results
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage === 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span className="sr-only">Previous Page</span>
-            </Button>
-            <Select
-              value={`${startPageInRange}-${endPageInRange}`}
-              onValueChange={(value) => {
-                const [start] = value.split('-').map(Number);
-                goToPage(start);
-              }}
-            >
-              <SelectTrigger className="w-24">
-                <SelectValue placeholder="Select page range" />
-              </SelectTrigger>
-              <SelectContent>
-                {pageRanges.map((range) => (
-                  <SelectItem key={range.label} value={range.label}>
-                    {range.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-1">
+      {/* Pagination */}
+      {currentPageData.length > 0 && (
+        <div className="border-t border-border p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Showing {startIndex + 1} to {Math.min(endIndex, tableData.length)} of {tableData.length} entries
+            </div>
+            <div className="flex items-center space-x-2 min-w-[400px] justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <Select
+                value={`${startPageInRange}-${endPageInRange}`}
+                onValueChange={(value) => {
+                  const [start] = value.split('-').map(Number);
+                  goToPage(start);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pageRanges.map((range) => (
+                    <SelectItem key={range.label} value={range.label}>
+                      Pages {range.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               {Array.from(
-                { length: Math.min(5, endPageInRange - startPageInRange + 1) },
+                { length: endPageInRange - startPageInRange + 1 },
                 (_, i) => startPageInRange + i
               ).map((pageNum) => (
                 <Button
                   key={pageNum}
                   variant={currentPage === pageNum ? "default" : "outline"}
-                  size="sm"
                   onClick={() => goToPage(pageNum)}
-                  className="w-8 h-8 p-0"
+                  size="sm"
                 >
                   {pageNum}
                 </Button>
               ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage === totalPages}
-            >
-              <ChevronRight className="h-4 w-4" />
-              <span className="sr-only">Next Page</span>
-            </Button>
           </div>
         </div>
       )}
