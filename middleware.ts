@@ -4,7 +4,8 @@ export default authMiddleware({
   publicRoutes: ["/"],
   ignoredRoutes: [
     "/((?!api|trpc))(_next.*|.+.[w]+$)", 
-    "/api/gemini/intent"
+    "/api/gemini/intent",
+    "/api/webhook",
   ],
 });
  
