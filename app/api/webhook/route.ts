@@ -31,12 +31,24 @@ export async function POST(req: Request) {
 
   const wh = new Webhook(webhookSecret);
 
+  // Log headers for debugging (excluding the actual signature)
+  console.log('Webhook headers:', {
+    'svix-id': svix_id,
+    'svix-timestamp': svix_timestamp,
+    'has-signature': !!svix_signature
+  });
+
   try {
-    const evt = wh.verify(body, {
+    const headers = {
       "svix-id": svix_id,
       "svix-timestamp": svix_timestamp,
       "svix-signature": svix_signature,
-    }) as WebhookEvent;
+    };
+
+    // Log payload size for debugging
+    console.log('Payload size:', body.length);
+
+    const evt = wh.verify(body, headers) as WebhookEvent;
 
     const eventType = evt.type;
     const userId = evt.data.id;
@@ -80,7 +92,13 @@ export async function POST(req: Request) {
       return new Response('Database operation failed', { status: 500 });
     }
   } catch (err) {
-    console.error('Webhook verification failed:', err);
-    return new Response('Webhook verification failed', { status: 400 });
+    console.error('Webhook verification failed:', {
+      error: err.message,
+      secretLength: webhookSecret.length,
+      bodyPreview: body.substring(0, 100) + '...' // Log start of body for debugging
+    });
+    return new Response('Webhook verification failed. Please check your WEBHOOK_SECRET and ensure it matches the one in Clerk dashboard.',
+      { status: 400 }
+    );
   }
 }
