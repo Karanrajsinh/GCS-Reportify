@@ -3,7 +3,18 @@ import { headers } from "next/headers";
 import { Webhook } from "svix";
 import { prisma } from "@/prisma/prisma";
 
+// Mark route as dynamic to prevent static optimization
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
+  // Check WEBHOOK_SECRET first
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error('WEBHOOK_SECRET is not set');
+    return new Response('Server configuration error', {
+      status: 500
+    });
+  }
   const headerPayload = headers();
   const svix_id = headerPayload.get("svix-id");
   const svix_timestamp = headerPayload.get("svix-timestamp");
@@ -18,7 +29,7 @@ export async function POST(req: Request) {
   const payload = await req.json();
   const body = JSON.stringify(payload);
 
-  const wh = new Webhook(process.env.WEBHOOK_SECRET || '');
+  const wh = new Webhook(webhookSecret);
 
   try {
     const evt = wh.verify(body, {
