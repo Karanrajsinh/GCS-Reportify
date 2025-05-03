@@ -2,17 +2,17 @@
 
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/app/components/ui/card';
 import { DraggableBlock } from './DraggableBlock';
 import { useReportConfig } from '@/contexts/report-config-context';
-import { Calendar } from '@/components/ui/calendar';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/app/components/ui/calendar';
+import { Button } from '@/app/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Metric } from '@/lib/types';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea } from '@/app/components/ui/scroll-area';
 
 export function MetricsSidebar() {
     const { reportBlocks } = useReportConfig();

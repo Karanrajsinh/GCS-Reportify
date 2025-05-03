@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core';
-import { Label } from '@/components/ui/label';
-import { RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/app/components/ui/label';
+import { RadioGroupItem } from '@/app/components/ui/radio-group';
 
 interface DraggableMetricOptionProps {
     value: string;

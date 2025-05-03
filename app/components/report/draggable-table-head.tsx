@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core';
-import { Button } from '@/components/ui/button';
-import { TableHead } from '@/components/ui/table';
+import { Button } from '@/app/components/ui/button';
+import { TableHead } from '@/app/components/ui/table';
 import { Trash } from 'lucide-react';
 import { ReportBlock } from '@/contexts/report-config-context';
 

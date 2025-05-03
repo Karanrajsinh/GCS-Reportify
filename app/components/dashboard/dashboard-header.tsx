@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import { BarChart3, Home, FileText } from "lucide-react";
-import { ModeToggle } from "@/components/theme-toggle";
+import { ModeToggle } from "@/app/components/theme-toggle";
 import { useParams, usePathname } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/app/components/ui/button";
 
 export function DashboardHeader() {
   const pathname = usePathname();

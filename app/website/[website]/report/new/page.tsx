@@ -1,15 +1,15 @@
 'use client';
 
-import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { DashboardHeader } from "@/app/components/dashboard/dashboard-header";
 import { useAuth } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/app/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import ReportBuilder from "@/components/report/report-builder";
+import ReportBuilder from "@/app/components/report/report-builder";
 import { useReportConfig } from "@/contexts/report-config-context";
 import { useEffect } from "react";
-import { MetricsSidebar } from "@/components/report/metrics-sidebar";
+import { MetricsSidebar } from "@/app/components/report/metrics-sidebar";
 
 export default function NewReportPage() {
     const { userId } = useAuth();

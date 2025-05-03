@@ -2,13 +2,13 @@
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { Calendar } from '@/components/ui/calendar';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/app/components/ui/calendar';
+import { Button } from '@/app/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { useReportConfig } from '@/contexts/report-config-context';
 import { cn } from '@/lib/utils';
 import { CalendarIcon, Plus } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/app/components/ui/card';
 import { Metric } from '@/lib/types';
 import { DraggableBlock } from './DraggableBlock';
 

@@ -3,10 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchGscProperties } from '@/lib/api/gsc';
 import { useReportConfig } from '@/contexts/report-config-context';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { AlertCircle, Loader2 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/app/components/ui/alert';
 import { useParams, useRouter } from 'next/navigation';
 
 export default function PropertySelector() {

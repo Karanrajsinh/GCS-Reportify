@@ -2,7 +2,7 @@
 
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/app/components/ui/button';
 import { X } from 'lucide-react';
 
 interface DraggableBlockProps {

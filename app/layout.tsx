@@ -2,8 +2,8 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
-import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/app/components/theme-provider";
+import { Toaster } from "@/app/components/ui/sonner";
 import { ReactQueryProvider } from '@/lib/react-query-provider';
 import { ReportConfigProvider } from '@/contexts/report-config-context';
 

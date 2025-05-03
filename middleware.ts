@@ -13,8 +13,6 @@ export const config = {
   matcher: [
     // Skip Next.js internals and static files
     "/((?!.+\\.[\\w]+$|_next).*)",
-    // Include root route
-    "/",
     // Include api routes
     "/(api|trpc)(.*)"
   ]

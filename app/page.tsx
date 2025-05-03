@@ -1,9 +1,9 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "@/app/components/ui/button";
 import { SignInButton, SignedIn, SignedOut } from "@clerk/nextjs";
 import { BarChart3 } from "lucide-react";
 import Link from "next/link";
-import { HeroSection, FeaturesSection } from "@/components/animated-sections";
-import { ModeToggle } from "@/components/theme-toggle";
+import { HeroSection, FeaturesSection } from "@/app/components/animated-sections";
+import { ModeToggle } from "@/app/components/theme-toggle";
 
 export default function Home() {
   return (

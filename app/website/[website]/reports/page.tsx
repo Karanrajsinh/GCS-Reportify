@@ -1,12 +1,12 @@
 'use client';
 
-import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { EmptyState } from "@/components/dashboard/empty-state";
-import { Button } from "@/components/ui/button";
+import { DashboardHeader } from "@/app/components/dashboard/dashboard-header";
+import { DashboardShell } from "@/app/components/dashboard/dashboard-shell";
+import { EmptyState } from "@/app/components/dashboard/empty-state";
+import { Button } from "@/app/components/ui/button";
 import { PlusCircle, ArrowLeft, Loader2, Pencil, Trash2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -17,15 +17,15 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-} from "@/components/ui/dialog";
+} from "@/app/components/ui/dialog";
 import {
     ContextMenu,
     ContextMenuContent,
     ContextMenuItem,
     ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@/app/components/ui/context-menu";
+import { Input } from "@/app/components/ui/input";
+import { Label } from "@/app/components/ui/label";
 
 interface Report {
     id: string;

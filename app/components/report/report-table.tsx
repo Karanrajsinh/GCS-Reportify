@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { ReportBlock, useReportConfig } from '@/contexts/report-config-context';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/app/components/ui/table';
+import { Card } from '@/app/components/ui/card';
+import { Button } from '@/app/components/ui/button';
 import { Loader2, RefreshCw, Download, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -12,33 +12,32 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/app/components/ui/dropdown-menu";
 import { PredefinedTimeRange } from '@/lib/types';
 import { exportToCsv } from '@/lib/api/export';
 import { useParams } from 'next/navigation';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '@/app/components/ui/skeleton';
 import { useDroppable } from '@dnd-kit/core';
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+} from "@/app/components/ui/context-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/app/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from 'date-fns';
+} from "@/app/components/ui/tooltip";
+import { ScrollArea } from "@/app/components/ui/scroll-area";
 
 // Create a separate component for the column header to handle drag and drop
 const ColumnHeader = ({
