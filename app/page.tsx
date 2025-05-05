@@ -17,8 +17,8 @@ export default function Home() {
               <span className="font-bold text-lg">GSC Reportify</span>
             </Link>
             <div className="flex items-center gap-3 md:hidden">
+              <ModeToggle />
               <SignedOut>
-                <ModeToggle />
                 <Link href="/login">
                   <Button variant="ghost" size="sm" className="font-medium bg-primary text-primary-foreground">
                     Login
@@ -61,57 +61,9 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-border/40 py-8 md:py-12">
-        <div className="container mx-auto px-4 md:px-6 max-w-7xl">
-          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                <span className="font-semibold">GSC Reportify</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Transform your Google Search Console data into actionable insights with our powerful reporting platform.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3">
-              <h3 className="font-semibold">Product</h3>
-              <nav className="flex flex-col gap-2">
-                <Link href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Features
-                </Link>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  About
-                </Link>
-              </nav>
-            </div>
-            <div className="flex flex-col gap-3">
-              <h3 className="font-semibold">Legal</h3>
-              <nav className="flex flex-col gap-2">
-                <Link href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Privacy Policy
-                </Link>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Terms of Service
-                </Link>
-              </nav>
-            </div>
-            <div className="flex flex-col gap-3">
-              <h3 className="font-semibold">Contact</h3>
-              <nav className="flex flex-col gap-2">
-                <Link href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Support
-                </Link>
-                <Link href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Contact Us
-                </Link>
-              </nav>
-            </div>
-          </div>
-          <div className="mt-6 md:mt-8 border-t border-border/40 pt-4 md:pt-6">
-            <p className="text-center text-sm text-muted-foreground">
-              © 2024 GSC Reportify. All rights reserved.
-            </p>
-          </div>
-        </div>
+        <p className="text-center text-sm text-muted-foreground">
+          © 2024 GSC Reportify. All rights reserved.
+        </p>
       </footer>
     </div>
   );

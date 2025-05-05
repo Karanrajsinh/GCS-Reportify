@@ -44,7 +44,7 @@ export function DashboardHeader() {
 
         <div className="flex items-center gap-4">
           <ModeToggle />
-          <UserButton />
+          <UserButton afterSignOutUrl="/login" />
         </div>
       </div>
     </header>

@@ -1,17 +1,12 @@
 "use client"
 
-import { SignIn, useUser } from '@clerk/nextjs'
+import { SignIn } from '@clerk/nextjs'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { ModeToggle } from '../components/theme-toggle'
 import { BarChart3 } from 'lucide-react'
 
 export default function Home() {
-    const { user } = useUser()
 
-    if (user) {
-        redirect('/websites')
-    }
 
     return (
         <div className="min-h-screen bg-background flex flex-col">

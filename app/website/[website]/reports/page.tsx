@@ -26,12 +26,19 @@ import {
 } from "@/app/components/ui/context-menu";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
+import { useQuery } from '@tanstack/react-query';
+import { fetchGscProperties } from '@/lib/api/gsc'; // Import fetchGscProperties
+import { Alert, AlertTitle, AlertDescription } from "@/app/components/ui/alert"; // Import Alert components
 
 interface Report {
     id: string;
     name: string;
     property: string;
     createdAt: string;
+}
+
+interface GscProperty {
+    siteUrl: string;
 }
 
 export default function WebsiteReportsPage() {
@@ -48,7 +55,25 @@ export default function WebsiteReportsPage() {
     const [selectedReport, setSelectedReport] = useState<Report | null>(null);
     const [editedName, setEditedName] = useState('');
 
-    const fetchReports = async () => {
+    const { data: properties, isLoading: isPropertiesLoading, error: propertiesError } = useQuery<GscProperty[]>({ // Fetch GSC properties
+        queryKey: ['gscProperties'],
+        queryFn: fetchGscProperties,
+    });
+
+    const [isValidWebsite, setIsValidWebsite] = useState(false);
+
+    useEffect(() => {
+        if (properties && !isPropertiesLoading && !propertiesError) {
+            const isValid = properties.some(property => property.siteUrl === decodedWebsite);
+            setIsValidWebsite(isValid);
+            if (!isValid) {
+                toast.error("Invalid website URL, select a website again");
+                router.push('/websites');
+            }
+        }
+    }, [properties, decodedWebsite, router]);
+
+    async function fetchReports() {
         try {
             setIsLoading(true);
             const response = await fetch(`/api/reports?website=${encodeURIComponent(decodedWebsite)}`);
@@ -65,11 +90,13 @@ export default function WebsiteReportsPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }
 
     useEffect(() => {
-        fetchReports();
-    }, [decodedWebsite]);
+        if (isValidWebsite) {
+            fetchReports();
+        }
+    }, [decodedWebsite, isValidWebsite]);
 
     const handleCreateReport = async () => {
         if (!newReportName.trim()) {
@@ -131,9 +158,10 @@ export default function WebsiteReportsPage() {
         }
     };
 
-    const handleDeleteReport = async (reportId: string) => {
+    const handleDeleteReport = async () => {
+        if (!selectedReport) return;
         try {
-            const response = await fetch(`/api/reports/${reportId}`, {
+            const response = await fetch(`/api/reports/${selectedReport.id}`, {
                 method: 'DELETE',
             });
 
@@ -148,6 +176,30 @@ export default function WebsiteReportsPage() {
             toast.error('Failed to delete report');
         }
     };
+
+    // Loading state
+    if (isPropertiesLoading) {
+        return (
+            <div className="flex justify-center items-center h-32">
+                <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+        );
+    }
+
+    if (propertiesError) {
+        return (
+            <Alert variant="destructive" className="my-4">
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>
+                    Failed to load Google Search Console properties. Please try refreshing the page.
+                </AlertDescription>
+            </Alert>
+        );
+    }
+
+    if (!isValidWebsite) {
+        return null;
+    }
 
     return (
         <div className="flex min-h-screen flex-col">
@@ -256,7 +308,7 @@ export default function WebsiteReportsPage() {
                                                 </ContextMenuItem>
                                                 <ContextMenuItem
                                                     className="text-red-600"
-                                                    onClick={() => handleDeleteReport(report.id)}
+                                                    onClick={() => handleDeleteReport()}
                                                 >
                                                     <Trash2 className="mr-2 h-4 w-4" />
                                                     Delete

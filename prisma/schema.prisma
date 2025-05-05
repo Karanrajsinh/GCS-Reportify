@@ -37,7 +37,7 @@ model Report {
 model Block {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   reportId    String   @db.ObjectId
-  report      Report   @relation(fields: [reportId], references: [id])
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
   type        String   // 'metric' or 'intent'
   metric      String?  // for metric blocks: 'clicks', 'impressions', 'ctr', 'position'
   timeRange   Json?    // for metric blocks: either string ('last7days', 'last28days', 'last3months') or object with startDate and endDate
@@ -50,7 +50,7 @@ model Block {
 model QueryData {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   reportId  String   @db.ObjectId
-  report    Report   @relation(fields: [reportId], references: [id])
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
   query     String
   metrics   Json     // Store metrics data for different time ranges
   intent    String?

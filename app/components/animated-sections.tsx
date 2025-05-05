@@ -46,12 +46,12 @@ export function HeroSection() {
               <h1 className=" font-bold tracking-tighter text-3xl md:text-4xl lg:text-5xl xl:text-6xl text-left">
                 Transform Your{" "}
                 <span className="text-primary bg-clip-text bg-gradient-to-r from-primary to-[#4F46E5]">
-                  Search Console
+                  Google Search Console
                 </span>{" "}
                 Data Into Actionable Insights
               </h1>
               <p className="max-w-[600px] text-xs sm:text-base lg:text-lg text-muted-foreground text-left">
-                Create customized reports from your Google Search Console data with our intuitive
+                Create customized reports from your Google Search Console data with  intuitive
                 drag-and-drop interface, enhanced with AI-powered intent analysis.
               </p>
             </motion.div>
@@ -61,7 +61,7 @@ export function HeroSection() {
             >
               <Link href="/login">
                 <Button size="lg" className="group h-10 px-5 sm:h-11 sm:px-6 lg:h-12 lg:px-8 shadow-glow hover:shadow-none transition-all duration-300">
-                  Get Started Free
+                  Get Started
                   <ArrowRight className="ml-2 h-4 w-4 lg:h-5 lg:w-5 transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
@@ -70,14 +70,6 @@ export function HeroSection() {
               className="flex flex-wrap sm:flex-nowrap sm:justify-between gap-3 lg:gap-4 text-xs lg:text-sm text-muted-foreground"
               variants={fadeInUp}
             >
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 lg:h-4 lg:w-4 text-primary" />
-                <span>No credit card required</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 lg:h-4 lg:w-4 text-primary" />
-                <span>Free forever plan</span>
-              </div>
             </motion.div>
           </div>
           <motion.div
@@ -116,8 +108,8 @@ export function FeaturesSection() {
             Everything you need to build powerful GSC reports
           </h2>
           <p className="text-base md:text-xl text-muted-foreground">
-            Our platform streamlines the process of creating comprehensive Google Search Console reports,
-            saving you time and providing deeper insights.
+            Streamline the process of creating comprehensive Google Search Console reports,
+            saving your time and providing deeper insights.
           </p>
         </div>
       </motion.div>

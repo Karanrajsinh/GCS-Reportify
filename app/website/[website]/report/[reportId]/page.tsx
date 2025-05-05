@@ -10,6 +10,20 @@ import { useEffect, useState } from "react";
 import { MetricsSidebar } from "@/app/components/report/metrics-sidebar";
 import { toast } from "sonner";
 import { Skeleton } from "@/app/components/ui/skeleton";
+import { useQuery } from '@tanstack/react-query';
+import { fetchGscProperties } from '@/lib/api/gsc'; // Import fetchGscProperties
+import { Alert, AlertTitle, AlertDescription } from "@/app/components/ui/alert"; // Import Alert components
+
+interface Report {
+    id: string;
+    name: string;
+    property: string;
+    createdAt: string;
+}
+
+interface GscProperty {
+    siteUrl: string;
+}
 
 export default function ReportPage() {
     const router = useRouter();
@@ -20,17 +34,42 @@ export default function ReportPage() {
     const { setSelectedProperty, addReportBlock, clearReportBlocks } = useReportConfig();
     const [isLoading, setIsLoading] = useState(true);
 
-    // Fetch report data on mount
+    const { data: properties, isLoading: isPropertiesLoading, error: propertiesError } = useQuery<GscProperty[]>({ // Fetch GSC properties
+        queryKey: ['gscProperties'],
+        queryFn: fetchGscProperties,
+    });
+
+    const [isValidWebsite, setIsValidWebsite] = useState(false);
+    const [reportData, setReportData] = useState<Report | null>(null);
+
+    useEffect(() => {
+        if (properties && !isPropertiesLoading && !propertiesError) {
+            const isValid = properties.some(property => property.siteUrl === decodedWebsite);
+            setIsValidWebsite(isValid);
+            if (!isValid) {
+                toast.error("Invalid website URL, select a website again");
+                router.push('/websites');
+            }
+        }
+    }, [properties, decodedWebsite, router]);
+
     useEffect(() => {
         async function fetchReportData() {
             try {
+                if (!isValidWebsite) return;
+
                 // Clear existing blocks before loading new ones
                 clearReportBlocks();
 
                 const response = await fetch(`/api/reports/${reportId}`);
-                if (!response.ok) throw new Error('Failed to fetch report');
+                if (!response.ok) {
+                    toast.error("Invalid report");
+                    router.push(`/website/${website}/reports`);
+                    return;
+                }
 
                 const data = await response.json();
+                setReportData(data);
 
                 // Set the selected property
                 setSelectedProperty(decodedWebsite);
@@ -49,17 +88,20 @@ export default function ReportPage() {
 
             } catch (error) {
                 console.error('Error fetching report:', error);
-                toast.error('Failed to load report');
+                toast.error("Invalid report");
+                router.push(`/website/${website}/reports`);
             } finally {
                 setIsLoading(false);
             }
         }
 
-        fetchReportData();
-    }, [reportId, decodedWebsite, setSelectedProperty, addReportBlock, clearReportBlocks]);
+        if (isValidWebsite) {
+            fetchReportData();
+        }
+    }, [reportId, decodedWebsite, setSelectedProperty, addReportBlock, clearReportBlocks, isValidWebsite, router, website]);
 
     // Loading state
-    if (isLoading) {
+    if (isLoading || isPropertiesLoading) {
         return (
             <div className="flex h-screen flex-col">
                 <DashboardHeader />
@@ -76,6 +118,31 @@ export default function ReportPage() {
                 </div>
             </div>
         );
+    }
+
+    if (propertiesError) {
+        return (
+            <div className="flex h-screen flex-col">
+                <DashboardHeader />
+                <div className="flex">
+                    <div className="w-80 max-h-[calc(100vh-4.5rem)]">
+                        <MetricsSidebar />
+                    </div>
+                    <div className="flex-1 p-6 md:p-10">
+                        <Alert variant="destructive" className="my-4">
+                            <AlertTitle>Error</AlertTitle>
+                            <AlertDescription>
+                                Failed to load Google Search Console properties. Please try refreshing the page.
+                            </AlertDescription>
+                        </Alert>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isValidWebsite) {
+        return null;
     }
 
     return (
